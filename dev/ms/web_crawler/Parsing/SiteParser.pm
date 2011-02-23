@@ -69,14 +69,15 @@ my $workingBodyText;
 my %inside = {};
 
 #constants used by the functions in this file
-my @tagList = ('a', 'meta', 'p');
+my @tagList = ['a', 'meta', 'p'];
 
 sub parseData
 {
 	#get the site contents
-	my $siteContents = @_;
+	my $siteContents = $_[0];
+	print $siteContents;
 	#clear the temporary variables used by this code
-	@workingListList = ();
+	@workingLinkList = ();
 	%workingMetaTable = {};
 	$workingBodyText = "";
 	#initialize parsed contents struct
@@ -90,7 +91,7 @@ sub parseData
 	$parser->parse($siteContents);
 	
 	#populate the struct
-	$parsedContents->links(@workingListList);
+	$parsedContents->links(@workingLinkList);
 	$parsedContents->metaData(%workingMetaTable);
 	$parsedContents->bodyText($workingBodyText);
 	
@@ -100,14 +101,14 @@ sub parseData
 
 sub tagHandler
 {
-	my ($tagname, $attrRef) = @_;
-	my %attributeTable = %{$attrRef};
+	my ($tagname, $attr) = @_;
+	print "getting called with: " . $tagname . " " . $attr . "\n";
 	#add the addition to the inside hash table
 	$inside{$tagname}++;
 	
 	if ($tagname eq 'a')
 	{
-		push (@workingLinkList, $attributeTable{'href'});
+		push (@workingLinkList, $attr->{'href'});
 	}
 	elsif($tagname eq 'meta')
 	{
@@ -117,20 +118,20 @@ sub tagHandler
 		my $metaDataPair = new META_DATA_PAIR;
 		my $metaTableKey;
 		my ($key, $value);
-		while ( ($key, $value) = each %attributeTable )
+		while ( ($key, $value) = each %$attr )
 		{
 			##content attribute found
   			if ($key eq "contents")
   			{
-  				$metaDataPair->content($attributeTable{$key});
+  				$metaDataPair->content($attr->{$key});
   			}
   			else ##assumes other attribute found
   			{
   				$metaTableKey = $key;
-  				$metaDataPair->attributeValue($attributeTable{$key});
+  				$metaDataPair->attributeValue($attr->{$key});
   			}
 		}
-		push($workingMetaTable{$metaTableKey}, $metaDataPair);
+		push(@{$workingMetaTable{$metaTableKey}}, $metaDataPair);
 	}
 }
 
