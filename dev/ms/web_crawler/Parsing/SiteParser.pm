@@ -13,6 +13,10 @@
 # fields should be added to this struct. Scripts that use that struct will
 # not be affected by the addition of further fields, but existing fields must
 # be kept the same.
+#
+#	TODO Finish the body of the if (metatag) clause
+#	TODO makesure the plaintext handler is implemented and check for
+#		 things like inside script
 #																				 
 ######################################################################################
 
@@ -30,38 +34,18 @@ use Class::Struct;
 #	bodyText - this is a string holding the body text of the page
 struct(PARSED_PAGE => {
 	links => '@',
-	metaData => '%',
+	charset => '$',
+	keywords => '@',
+	description => '$',
 	bodyText => '$',
-});
-
-# this struct is used by metaData table. The reason this additional struct is
-# used as the value is due to the peculiar nature of HTML metaData and how it 
-# can be made easily accessible.
-# the current setup of the metaData table is the following
-#	NOTE: key => value indicates a key value pair and perl datatype notation
-#   is used to imply types
-#
-#	%metaData = $attribute_name => @metaDataPairs
-#   @metaDataPairs = [ metaDataPair1, metaDataPair2, metaDataPair3, etc.]
-#
-# this setup allows for easy access to wanted metadata. To demonstrate, below
-# is sample perl code for making an array out of the keywords on a webpage
-#
-# my @namePairs = $metaDataTable{"name"};
-# foreach(@namePairs) {
-#	if ($_->attributeValue eq "keywords") {
-#   	return split(",", $_->content);
-#   }	
-# }
-struct(META_DATA_PAIR => {
-	attributeValue => '$',
-	content => '$',
 });
 
 #private variables used by the functions in this file
 my @workingLinkList;
-my %workingMetaTable;
 my $workingBodyText;
+my $workingCharset;
+my @workingKeywordList;
+my $workingDescription;
 
 #used to cleverly keep track of what tags are currently open
 #	EXAMPLE: you want to know if you're inside a script tag
@@ -78,8 +62,10 @@ sub parseData
 	print $siteContents;
 	#clear the temporary variables used by this code
 	@workingLinkList = ();
-	%workingMetaTable = {};
 	$workingBodyText = "";
+	@workingKeywordList = ();
+	$workingDescription = "";
+	$workingCharset = "";
 	#initialize parsed contents struct
 	my $parsedContents = new PARSED_PAGE;
 	#set up the HTML Parser with proper event handling subroutines
@@ -92,8 +78,10 @@ sub parseData
 	
 	#populate the struct
 	$parsedContents->links(@workingLinkList);
-	$parsedContents->metaData(%workingMetaTable);
 	$parsedContents->bodyText($workingBodyText);
+	$parsedContents->charset($workingCharset);
+	$parsedContents->description($workingDescription);
+	$parsedContents->keywords(@workingKeywordList);
 	
 	#return the struct
 	return $parsedContents;
@@ -112,32 +100,19 @@ sub tagHandler
 	}
 	elsif($tagname eq 'meta')
 	{
-		#should find the attribute name and use this is the key of the working
-		# metaData hash. Then push the value of this attribute and the value
-		# of the contents attribute onto the array
-		my $metaDataPair = new META_DATA_PAIR;
-		my $metaTableKey;
-		my ($key, $value);
-		while ( ($key, $value) = each %$attr )
+		if (defined $attr->{'name'})
 		{
-			##content attribute found
-  			if ($key eq "contents")
-  			{
-  				$metaDataPair->content($attr->{$key});
-  			}
-  			else ##assumes other attribute found
-  			{
-  				$metaTableKey = $key;
-  				$metaDataPair->attributeValue($attr->{$key});
-  			}
+			
 		}
-		push(@{$workingMetaTable{$metaTableKey}}, $metaDataPair);
+		elsif (defined $attr->)
+		
 	}
 }
 
 sub textHandler
 {
 	my $text = @_;
+	$workingBodyText .= $text;
 }
 
 sub endHandler

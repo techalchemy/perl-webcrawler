@@ -8,16 +8,24 @@
 # metadata gets placed into the beginning of the file, inside of HTML comments.	
 #
 #	TODO add instrumentation
+#		debug printing of relevant runtime info
+#		add output files for following things:
+#			list of links encountered
+#	TODO handling different charsets
+#	TODO do HTML parsing via extending HTML::Parser class
+#	TODO change how program options are set
+#		config file, command line params, or both?
 #																				 
 ######################################################################################
-
+require 'SiteParser.pm';
 use strict;
 
 use HTML::Parser;
 use LWP::Simple;
 use Class::Struct;
+use SiteParser;
 
-#no warnings 'utf8'; #TODO deal with this issue instead of ignoring warnings
+#no warnings 'utf8'; #XXX get rid of this once charset handling implemented
 
 # this struct will be used to hold the date on each page
 struct(PAGE_RECORD => {url => '$',
@@ -48,11 +56,11 @@ print "finished running siteCrawler.pl...\n";
 sub main()
 {
 	#check to see if the user just wanted to see the usage
-	if (join("", @ARGV) =~ m/(help|\?|usage|-h)/g)
+	if ((scalar(@ARGV) == 0) || (join("", @ARGV) =~ m/(help|\?|usage|-h)/g))
 	{
 		print "\nProper calling conventions:\n";
-		print "\tperl siteCrawler.pl <seed file> <id prefix> <max link depth>";
-		exit;
+		print "\tperl siteCrawler.pl <seed file> <id prefix> <max link depth>\n\n";
+		return;
 	}
 
 	my @seeds = loadAndSeparate($ARGV[0]);
@@ -163,7 +171,6 @@ sub checkAndBuildPageRecords($$)
 	my @recordList = ();
 	foreach (@links)
 	{
-		#TODO add more refined link checking/manipulating
 		#check for legal link
 		if (/http:\/\//)
 		{
@@ -200,7 +207,6 @@ sub getCurrentTimeString
 
 sub debugPrint($)
 {
-	#TODO add a debug printing
 	open (DEBUG_FILE, ">>", $DEBUG_PRINT_OUTPUT_FILENAME);
 	print DEBUG_FILE "TIME: " . getCurrentTimeString() . " MESSAGE: " . $_[0] . "\n";
 	close (DEBUG_FILE);
@@ -240,11 +246,6 @@ sub storePage($$)
 	close (OUTPUT_FILE);
 }
 
-sub loadConfigurationFile($)
-{
-	#TODO make this return a hash for a configuration file
-}
-
 
 ######################################################################################
 #	This function creates a unique ID to use for the filename. The current way these
@@ -280,7 +281,6 @@ sub getUniqueID()
 #		Return
 #			An array containing all the urls of all the links
 #
-#		TODO get rid of the need for global array, consider extending HTML::Parser class
 ######################################################################################
 sub extractLinks($)
 {
@@ -305,10 +305,10 @@ sub extractLinks($)
 #
 ######################################################################################
 sub foundLink($$) { 
+	##pushes the url onto the temp link array
 	my ($tagname, $attr) = @_;
 	push(@tempLinkArray, $attr->{ href });
 	##Debugging code to make list of links found
-	##TODO remove me once code is working
 	open (LINK_OUTPUT_FILE, ">>", "linklist.txt");
 	print LINK_OUTPUT_FILE $attr->{ href } . "\n";
 	close LINK_OUTPUT_FILE;
