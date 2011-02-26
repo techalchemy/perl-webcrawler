@@ -28,7 +28,7 @@ sub loadConfigFile
 		$configHash{$key} = $value;
 	}
 	close(OUTPUT_FILE);
-	return \%configHash;
+	return %configHash;
 }
 
 1;
