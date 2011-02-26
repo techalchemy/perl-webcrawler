@@ -17,17 +17,24 @@ sub main()
 	{
 		print "\t" . $_ . "\n";
 	}
+	print "printing keywords found: \n";
+	foreach(@{$parsedPage->keywords})
+	{
+		print "\t" . $_ . "\n";
+	}
+	print "printing body text\n";
+	printDebugLine("body", $parsedPage->bodyText);
 	
 	print "printing metadata found: \n";
-	my ($key, $value);
-	my %metaHash = $parsedPage->metaData;
-	foreach (($key, $value) = each %metaHash)
-	{
-		my @currentAttributePairList = @{$metaHash{$key}};
-		print "current attribute: " . $key . "\n";
-		foreach (@currentAttributePairList)
-		{
-			print "\t" . @_->attributeValue . " => " . @_->contents . "\n";
-		}
-	}
+	printDebugLine("charset", $parsedPage->charset);
+	printDebugLine("description", $parsedPage->description);
+	printDebugLine("title", $parsedPage->title);
+	printDebugLine("author", $parsedPage->author);
+	
+}
+
+sub printDebugLine
+{
+	my ($header, $data) = @_;
+	print $header . ": " . $data . "\n";
 }

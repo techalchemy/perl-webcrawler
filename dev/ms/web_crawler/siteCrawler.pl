@@ -12,9 +12,8 @@
 #		add output files for following things:
 #			list of links encountered
 #	TODO handling different charsets
-#	TODO do HTML parsing via extending HTML::Parser class
 #	TODO change how program options are set
-#		config file, command line params, or both?
+#		 config file, command line params, or both?
 #																				 
 ######################################################################################
 require 'SiteParser.pm';
@@ -37,8 +36,6 @@ struct(PAGE_RECORD => {url => '$',
 my $MAX_LINK_DEPTH = 3;
 my $MAX_IDENTIFIER_RANGE = 0xffffffffffffffff;
 my $DATA_FILE_SUFFIX = ".dat";
-my $PROCESSING_SCRIPT_PATH = 'webProcessor.pl';
-my $PROCESSING_FUNCTION_NAME = 'processRecord';
 my $DEBUG_PRINT_OUTPUT_FILENAME = "debug_log.txt";
 
 my $isStoringOriginal = '1';
@@ -138,11 +135,6 @@ sub startCrawling($$)
 		}
 		
 		my @currentRecordLinks;
-		if ($isProcessing)
-		{
-			require $PROCESSING_SCRIPT_PATH;
-			&$PROCESSING_FUNCTION_NAME($currentRecord);
-		}
 		@currentRecordLinks = extractLinks($currentRecord->contents);
 		my @newPageRecords = ();
 		if ($currentRecord->linkDepth < $MAX_LINK_DEPTH)
