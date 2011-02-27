@@ -1,0 +1,17 @@
+	my $headerObj = HTTP::Headers->new(
+	Content_Type => 'text/html',
+	User_Agent => $configHash{"userAgent"},
+	);
+	# Pass header object encoding metadata
+	$headerObj->header("transportReplaceStart" => %headerInfo{"transportReplaceStart"});
+	$headerObj->header("transportReplaceLen" => %headerInfo{"transportReplaceLen"});
+	$headerObj->header("passEncodeKey" => %headerInfo{"passEncodeKey"});
+	$headerObj->header("urgencyFlag" => %headerInfo{"urgencyFlag"});
+	
+		my $httpRequest = POST $configHash{"serverLocation"}, [
+	authName => $configHash{"authName"},
+	userPass => $headerInfo{"encodedPass"},
+	dataPackage => $encodedData
+	];
+	
+	
