@@ -49,7 +49,7 @@ my %configHash = {
 	"authName", 0,
 	"userPass", 'default password',
 	"serverLocation", 'localhost'
-}
+};
 my %headerInfo = {
 	"transportReplaceStart", 0,
 	"transportReplaceLen", 0,
@@ -57,9 +57,9 @@ my %headerInfo = {
 	"urgencyFlag", 0,
 	"encodedPass", 'blank',
 	"passEncodeKey", 'blank'
-}
+};
 my %hashedStruct = {
-}
+};
 
 # Relative path of the config file location and loading for isolation testing
 $configFile = "commConfig.conf";
@@ -69,14 +69,14 @@ $configFile = "commConfig.conf";
 sub setConfigValues
 {
 	%configHash = %{$_[0]};
-}
+};
 # Call main function for processing -- Returns False on any failure
 # Pass this function the uflag and struct (uflag, struct)
 # UFlag: 0 = non-urgent; 1 = expedite; 2 = extremely urgent
 sub sendToDB
 {
 	# Set config urgency flag
-	$headerInfo{"urgencyFlag"} = $_[0]
+	$headerInfo{"urgencyFlag"} = $_[0];
 	# Check struct conversion to serialized and randomized JSON
 	if (convertFromStruct($_[1]))
 	{
@@ -88,7 +88,7 @@ sub sendToDB
 		return 0;
 	}
 	# Check password encoding & rewrite to hash table as encodedPass
-	if (encodePassword(%cognfigHash{'userPass'}))
+	if (encodePassword())
 	{
 		print "\n\n\n\n\nPassword successfully encoded\n\n\n\n\n";
 	}
@@ -115,15 +115,15 @@ sub convertFromStruct
 	# Typecast the struct data into a hash table
 	%hashedStruct = %{$_[0]};
 	# Convert hash table to JSON
-	my $jsonStruct = json_encode %hashedStruct;
+	my $jsonStruct = json_encode(%hashedStruct);
 	# Error checking
 	if ($jsonStruct)
 	{
-		Print "\nJSON Encoding Successful\n";
+		print "\nJSON Encoding Successful\n";
 	}
 	else
 	{
-		Print "\nJSON Encoding Failed\n";
+		print "\nJSON Encoding Failed\n";
 		return 0;
 	}
 	# PHP Serialize the JSON value
@@ -131,11 +131,11 @@ sub convertFromStruct
 	# More error checking
 	if ($serialData)
 	{
-		Print "\n\nSerialization Successful\n\n";
+		print "\n\nSerialization Successful\n\n";
 	}
 	else
 	{
-		Print "\n\nSerialization Failed\n\n";
+		print "\n\nSerialization Failed\n\n";
 		return 0;
 	}
 	# Call insert function to encode serial data
@@ -201,10 +201,12 @@ sub shipData
 	User_Agent => $configHash{"userAgent"},
 	);
 	# Pass header object encoding metadata
-	$headerObj->header("transportReplaceStart" => %headerInfo{"transportReplaceStart"});
-	$headerObj->header("transportReplaceLen" => %headerInfo{"transportReplaceLen"});
-	$headerObj->header("passEncodeKey" => %headerInfo{"passEncodeKey"});
-	$headerObj->header("urgencyFlag" => %headerInfo{"urgencyFlag"});
+	$headerObj->header(
+	-transportReplaceStart => $headerInfo{"transportReplaceStart"},
+	-transportReplaceLen => $headerInfo{"transportReplaceLen"},
+	-passEncodeKey => $headerInfo{"passEncodeKey"},
+	-urgencyFlag => $headerInfo{"urgencyFlag"}
+	);
 	# NB: Submit via form: %configHash{"authName"}, %headerInfo{"encodedPass"}, $encodedData
 	# Instantiate Request Objet for Form post to server
 	# TODO Add form data
@@ -215,17 +217,17 @@ sub shipData
 	];
 	# Instantiate new LWP UserAgent object to submit form request
 	my $commLink = LWP::UserAgent->new();
-	$commlink->headers($headerObj);
+	$commLink->headers($headerObj);
 	$commLink->agent($configHash{"userAgent"});
 	# Read response for bit flag indicators
 	my $httpResponse = $commLink->request($httpRequest);
 	my $httpData = $httpResponse->content;
 	# Unserialize response data and json_decode it into an array
 	my $responseJson = unserialize $httpResponse;
-	my @reponseArray = json_decode $responseJson;
+	my @responseArray = json_decode $responseJson;
 	# Check if the operation succeeded
 	my $responseString;
-	if (($responseArray[0] == 1) && ($responseArray[1] == 1))
+	if (($responseArray[0] == 1) and ($responseArray[1] == 1))
 	{
 		$responseString = "\n\n\n\n\n\nAuthenticated and Transmitted\n\n\n\n\n\n";
 		return 1;
