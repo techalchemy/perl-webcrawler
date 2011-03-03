@@ -1,4 +1,6 @@
 require 'Util.pm';
+require 'PostData.pm';
+use PostData;
 use Util;
 
 main();
@@ -10,4 +12,5 @@ sub main
 	{
 		print "key: " . $key . "\tvalue: " . $config{$key} . "\n";
 	}
+	PostData::getCfgInfo();
 }
