@@ -13,8 +13,8 @@ sub main
 		print "key: " . $key . "\tvalue: " . $config{$key} . "\n";
 	}
 	my %configdata = %{PostData::getCfgInfo()};
-	while (my ($key, $value) = each %configdata) 
+	while (my ($key2, $value2) = each %configdata) 
 	{
-		print "cfgkey: " . $key . "\tcfgvalue: " . $configdata{$key} . "\n";
+		print "cfgkey: " . $key2 . "\tcfgvalue: " . $configdata{$key} . "\n";
 	}
 }
