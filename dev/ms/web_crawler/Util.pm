@@ -75,4 +75,17 @@ sub setGlobalDebugFile
 	$globalDebugFile = $_[0];
 }
 
+sub getConfig
+{
+	my $callerPrefix = caller() . "_";
+	my %returnHash;
+	foreach $optionName (keys %options) {
+		if ($optionName =~ $callerPrefix)
+		{
+			$returnHash{$optionName} = $options{$optionName};
+		}
+	}
+	return %returnHash;
+}
+
 1;
