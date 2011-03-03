@@ -78,9 +78,11 @@ sub setGlobalDebugFile
 sub getConfig
 {
 	my $callerPrefix = caller() . "_";
+	$callerPrefix = lc($callerPrefix);
 	my %returnHash;
 	foreach $optionName (keys %options) {
-		if ($optionName =~ $callerPrefix)
+		$optionName = lc($optionName);
+		if ($optionName =~ m/^($callerPrefix)/)
 		{
 			$returnHash{$optionName} = $options{$optionName};
 		}
