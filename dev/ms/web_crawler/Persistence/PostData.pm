@@ -62,10 +62,14 @@ my %hashedStruct = {
 };
 
 # Relative path of the config file location and loading for isolation testing
-$configFile = "commConfig.conf";
-%configHash = Util::loadConfigFile($configFile);
+#$configFile = "commConfig.conf";
+#%configHash = Util::loadConfigFile($configFile);
 
 # Take hash values passed from main script
+sub getCfgInfo 
+{
+	Util::getConfig();
+}
 sub setConfigValues
 {
 	%configHash = %{$_[0]};
