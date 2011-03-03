@@ -81,12 +81,13 @@ sub getConfig
 	$callerPrefix = lc($callerPrefix);
 	print("Called by" . $callerPrefix);
 	my %returnHash;
-	foreach $optionName (keys %options) {
+	# change %config back to %options for later use
+	foreach $optionName (keys %config) {
 		$optionName = lc($optionName);
 		print("Found option:" . $optionName); 
 		if ($optionName =~ m/^($callerPrefix)/)
 		{
-			$returnHash{$optionName} =~ $';
+			$returnHash{$'} =~ $options{$optionName};
 		}
 	}
 	return %returnHash;
