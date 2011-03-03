@@ -84,7 +84,7 @@ sub getConfig
 		$optionName = lc($optionName);
 		if ($optionName =~ m/^($callerPrefix)/)
 		{
-			$returnHash{$optionName} = $options{$optionName};
+			$returnHash{$optionName} =~ $';
 		}
 	}
 	return %returnHash;
