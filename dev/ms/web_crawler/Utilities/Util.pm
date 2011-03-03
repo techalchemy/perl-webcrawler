@@ -1,5 +1,10 @@
 package Util;
 
+######################################################################################
+# DEBUGGING static variables	
+######################################################################################
+my $globalDebugFlag = 0;
+my $globalDebugFile = 0;
 
 ######################################################################################
 #	This function is used to verify that the links are correctly formed, possibly
@@ -29,6 +34,45 @@ sub loadConfigFile
 	}
 	close(OUTPUT_FILE);
 	return %configHash;
+}
+
+
+sub debugPrint
+{
+	my ($data, $filename) = @_;
+	my $debugFile = $globalDebugFile;
+	my $isPrinting = $globalDebugFlag;
+	if ($filename != undef)
+	{
+		$debugFile = $filename;
+		$isPrinting = 1;
+	}
+	if ($isPrinting)
+	{
+		open (OUTPUT_FILE, ">>", $debugFile);
+		my $formattedData = formatData($data);
+		print OUTPUT_FILE $formattedData . "\n";
+	}
+	#do data formatting depending on type
+	
+	
+	
+}
+
+sub formatData
+{
+	my $data = $_[0];
+	return $data;
+}
+
+sub setGlobalDebug
+{
+	$globalDebugFlag = $_[0];
+}
+
+sub setGlobalDebugFile
+{
+	$globalDebugFile = $_[0];
 }
 
 1;
