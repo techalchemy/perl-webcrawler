@@ -29,14 +29,12 @@ sub loadConfigFile
 	while (<OUTPUT_FILE>)
 	{
 		chomp();
-		print "Util raw line: ";
-		print;
-		print "\n";
+		debugPrint("raw line: " . $_);
 		my ($key, $value) = split(/=/);
-		print "Util found key: " . $key . "\n";
-		print "Util found value: " . $value . "\n";
+#		print "found key: " . $key . "\n";
+#		print "found value: " . $value . "\n";
 		$value =~ s/;//g;
-		print "Util modified value: " . $value . "\n";
+#		print "Util modified value: " . $value . "\n";
 		$configHash{$key} = $value;
 	}
 	close(OUTPUT_FILE);
@@ -46,32 +44,58 @@ sub loadConfigFile
 
 sub debugPrint
 {
-	my ($data, $filename) = @_;
+	my @data = @_;
+	if (!$globalDebugFlag) { return; }
 	my $debugFile = $globalDebugFile;
-	my $isPrinting = $globalDebugFlag;
 	my $callingModule = caller();
-	$data = $callingModule . ": " . $data;
-	if ($filename != undef)
+	$callingModule . ": " . $data;
+	open (OUTPUT_FILE, ">>", $debugFile);
+	print OUTPUT_FILE $callingModule . ': ';
+	foreach (@data)
 	{
-		$debugFile = $filename;
-		$isPrinting = 1;
+		my $formattedData = formatData($_);
+		print OUTPUT_FILE $formattedData;
 	}
-	if ($isPrinting)
-	{
-		open (OUTPUT_FILE, ">>", $debugFile);
-		my $formattedData = formatData($data);
-		print OUTPUT_FILE $formattedData . "\n";
-	}
-	#do data formatting depending on type
+	print OUTPUT_FILE "\n";
 	
-	
-	
+	close OUTPUT_FILE;
 }
 
 sub formatData
 {
 	my $data = $_[0];
-	return $data;
+	my $dataRef = \$data;
+	my $returnData = "";
+	$_ = $dataRef;
+	if (/HASH/)
+	{
+		my %outputHash = %{$dataRef};
+		$returnData = ' { ';
+		while (my ($key, $value) = each %outputHash)
+		{
+			$returnData .= $key . ' => ' . $outputHash{$key} . ', ';
+		}
+		$returnData = ' } ';
+	}
+	elsif(/ARRAY/)
+	{
+		my @outputArray = @{$dataRef};
+		$returnData .= ' [ ';
+		foreach (@outputArray)
+		{
+			$returnData .= $_ . ',';
+		}
+		$returnData .= ' ] ';
+	}
+	elsif(/SCALAR/)
+	{
+		$returnData .= ${$dataRef};
+	}
+	else
+	{
+		$returnData .= ${$dataRef};
+	}
+	return $returnData;
 }
 
 sub setGlobalDebug
@@ -88,12 +112,12 @@ sub getConfig
 {
 	my $callerPrefix = caller() . "_";
 	$callerPrefix = lc($callerPrefix);
-	print("Called by " . $callerPrefix ."\n");
+	debugPrint(" Called by " . $callerPrefix ."\n");
 	my %returnHash;
 	# change %config back to %options for later use
 	foreach $optionName (keys %config) {
 		$optionName = lc($optionName);
-		print("Found option: " . $optionName . "\n"); 
+		debugPrint("Found option: " . $optionName . "\n"); 
 		if ($optionName =~ m/^($callerPrefix)/)
 		{
 			$returnHash{$'} =~ $options{$optionName};
