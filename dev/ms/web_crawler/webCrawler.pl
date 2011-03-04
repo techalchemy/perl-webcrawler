@@ -83,11 +83,8 @@ sub main
 	my @seedRecords = buildPageRecords(0, @seeds);
 	foreach (@seedRecords) { 
 		my %jobHash = %{shared_clone(\%{$_})};
-		print "job hash: " . $jobHash{'linkDepth'} . "\n";
 		push(@pendingJobs, shared_clone(\%{$_})); 
 	}
-	print "printing jobs\n";
-	print join(", ", @pendingJobs);
 	Util::debugPrint ( 'seeds added to job queue ');
 	#initialize the threads
 	Util::debugPrint ( 'initializing threads and starting crawl' );
@@ -107,6 +104,16 @@ sub main
 	
 }
 
+######################################################################################
+#	This function takes a link depth and a list of urls and turns them into page
+#	records in a hash
+#		Parameters
+#			content - This should be the HTML page contents. A single scalar holding
+#			all the data is expected
+#		Return
+#			A human readable using string indicating the current time
+#
+######################################################################################
 sub buildPageRecords
 {
 	my ($linkDepth, @urls) = @_;
@@ -144,6 +151,7 @@ sub getCurrentTimeString
 	my $year = int(@tempTime[5]) + 1900;
 	return $day . "/" . $month . "/" . $year . " " . $hours . ":" . $minutes . ":" . $seconds;
 }
+
 
 sub processPage
 {
