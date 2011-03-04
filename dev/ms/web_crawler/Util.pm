@@ -1,10 +1,14 @@
+use threads;
+
 package Util;
+
 
 ######################################################################################
 # DEBUGGING static variables	
 ######################################################################################
 my $globalDebugFlag = 0;
 my $globalDebugFile = 0;
+my $recordThreadFlag = 0;
 
 ######################################################################################
 #	This function is used to verify that the links are correctly formed, possibly
@@ -50,7 +54,12 @@ sub debugPrint
 	my $callingModule = caller();
 	$callingModule . ": " . $data;
 	open (OUTPUT_FILE, ">>", $debugFile);
-	print OUTPUT_FILE $callingModule . ': ';
+	print OUTPUT_FILE $callingModule;
+	if ($recordThreadFlag)
+	{
+		print OUTPUT_FILE "[" . threads->tid() . "]";
+	}
+	print OUTPUT_FILE ': ';
 	foreach (@data)
 	{
 		my $formattedData = formatData($_);
@@ -108,6 +117,10 @@ sub setGlobalDebugFile
 	$globalDebugFile = $_[0];
 }
 
+sub setThreadRecord
+{
+	$recordThreadFlag = $_[0];
+}
 sub getConfig
 {
 	my $callerPrefix = caller() . "_";
