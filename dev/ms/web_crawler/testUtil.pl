@@ -7,7 +7,10 @@ main();
 
 sub main
 {
-	my %config = %{Util::loadConfigFile("testConfigFile.cfg")};
+	my $configPath = "testConfigFile.cfg";
+	print "Config Filepath: " . $configPath . "\n";
+	my %config = %{Util::loadConfigFile($configPath)};
+	print "Config Hash: " . %config . "\n";
 	while (my ($key, $value) = each %config)
 	{
 		print "key: " . $key . "\tvalue: " . $config{$key} . "\n";
