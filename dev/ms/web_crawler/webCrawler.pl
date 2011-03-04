@@ -65,6 +65,7 @@ sub main
 	%options = Util::loadConfigFile($configFilePath);
 	Util::setGlobalDebug($options{'useDebugMode'});
 	Util::setGlobalDebugFile($options{'debugFile'});
+	Util::setThreadRecord(1);
 	unlink($options{'debugFile'});
 	Util::debugPrint( "configuration file loaded" );
 	#load the seeds file
@@ -149,7 +150,7 @@ sub processPage
 	my $pageRecord = shift;
 	my $siteContents = get ($pageRecord->{url});
 	my $parsedPage = SiteParser::parseData($siteContents);
-	Util::debugPrint('thread: ' . threads->tid() . ' processing ' . $pageRecord->{url});
+	Util::debugPrint(' processing ' . $pageRecord->{url});
 	#output the page here
 	
 	#prune the links here
@@ -158,40 +159,40 @@ sub processPage
 	#Util::debugPrint("thread: " . threads->tid() . "\tlinks: " . join(" ", @{$parsedPage->links}));
 	if ($pageRecord->{linkDepth} < $options{linkDepth})
 	{
-		Util::debugPrint('thread: ' . threads->tid() . " building records");
+		Util::debugPrint(" building records");
 		@resultPageRecords = buildPageRecords($pageRecord->{linkDepth} + 1, @{$parsedPage->links});
 	}
 	foreach (@resultPageRecords)
 	{
-		Util::debugPrint('thread: ' . threads->tid() . ' adding ' . $_->{url} . ' to queue');		
-		my $sharedRef = share(%{$_});
-		Util::debugPrint('ALKJADSLKFJ ' . $sharedRef->{url});
+		Util::debugPrint(' adding ' . $_->{url} . ' to queue');		
+		my $sharedRef :shared = share($_);
+		#FIXME: this is where the error is occuring
 		push (@pendingJobs, \%{$sharedRef});
 	}
 }
 
+# FIXME: this isn't coded properly
 sub workerThread
 {
-	Util::debugPrint('thread: ' . threads->tid());
 	#print "thread " . threads->tid() . "\n";
 	my $isRunning = 1;
 	while ($isRunning)
 	{
-		Util::debugPrint('thread: ' .threads->tid() . ' is running');
+		Util::debugPrint('running');
 		$threadState{threads->tid()} = 'RUNNING';
 		my $newPage;
 		$newPage = pop @pendingJobs;
 		
 		if ($newPage == undef)
 		{
-			Util::debugPrint('thread: ' . threads->tid() . ' going to wait mode');
+			Util::debugPrint('going to wait mode');
 			$threadState{threads->tid()} = 'WAIT';
 			threads->yield();
 		}
 		else
 		{
-			Util::debugPrint('new job received by: ' . threads->tid() . "\tjob: " . $newPage->{url});
-			Util::debugPrint('thread: ' . threads->tid() . ' processing page');
+			Util::debugPrint("job: " . $newPage->{url});
+			Util::debugPrint('processing page');
 			processPage($newPage);
 		}
 		my @runningThreads = threads->list(threads::all);
@@ -205,5 +206,5 @@ sub workerThread
 		}
 		$isRunning = 0;
 	}
-	print "thread " . threads->tid() . " is finished\n";
+	Util::debugPrint('finished');
 }
