@@ -19,9 +19,14 @@
 
 package SiteParser;
 
+#import CPAN modules
 use strict;
 use HTML::Parser;
 use Class::Struct;
+
+#import local modules
+require 'Util.pm';
+use Util qw(debugPrint);
 
 # this struct holds the information that is the result of parsing the html file
 # Each attribute is described below
@@ -69,6 +74,7 @@ sub parseData
 	my $siteContents = $_[0];
 	#initialize the working struct to be populated while parsing
 	$workingPageStruct = new PARSED_PAGE;
+	Util::debugPrint('parseData called, initializing parser');
 	#initialize parsed contents struct
 	#set up the HTML Parser with proper event handling subroutines
 	my $parser = HTML::Parser->new(start_h => [\&tagHandler, "tagname, attr"],
@@ -76,9 +82,12 @@ sub parseData
 								   end_h => [\&endHandler, "tagname"]);
 	$parser->report_tags(@tagList);
 	#call the parse function with downcased html data
+	Util::debugPrint('parser initialized, starting parsing');
 	$parser->parse(lc($siteContents));
 	
+	
 	#return the now populated struct
+	Util::debugPrint('parsing done');
 	return $workingPageStruct;
 }
 
@@ -102,9 +111,9 @@ sub tagHandler
 	my ($tagname, $attr) = @_;
 	#add the addition to the inside hash table
 	$inside{$tagname}++;
-	
 	if ($tagname eq 'a')
 	{
+		#Util::debugPrint('link encountered. url => ' . $attr->{'href'});
 		push (@{$workingPageStruct->links}, $attr->{'href'});
 	}
 	elsif($tagname eq 'meta')
