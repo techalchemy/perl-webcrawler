@@ -149,20 +149,24 @@ sub processPage
 	my $pageRecord = shift;
 	my $siteContents = get ($pageRecord->{url});
 	my $parsedPage = SiteParser::parseData($siteContents);
+	Util::debugPrint('thread: ' . threads->tid() . ' processing ' . $pageRecord->{url});
 	#output the page here
 	
 	#prune the links here
 	#add the links to the queue
 	my @resultPageRecords = ();
-	Util::debugPrint("thread: " . threads->tid() . "\tlinks: " . join(",", $parsedPage->{links}));
+	#Util::debugPrint("thread: " . threads->tid() . "\tlinks: " . join(" ", @{$parsedPage->links}));
 	if ($pageRecord->{linkDepth} < $options{linkDepth})
 	{
-		my @resultPageRecords = buildPageRecords($pageRecord->{linkDepth}, $parsedPage->{links});
+		Util::debugPrint('thread: ' . threads->tid() . " building records");
+		@resultPageRecords = buildPageRecords($pageRecord->{linkDepth} + 1, @{$parsedPage->links});
 	}
 	foreach (@resultPageRecords)
 	{
 		Util::debugPrint('thread: ' . threads->tid() . ' adding ' . $_->{url} . ' to queue');		
-		push (@pendingJobs, shared_clone (\%{$_}));
+		my $sharedRef = share(%{$_});
+		Util::debugPrint('ALKJADSLKFJ ' . $sharedRef->{url});
+		push (@pendingJobs, \%{$sharedRef});
 	}
 }
 
