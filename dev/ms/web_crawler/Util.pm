@@ -21,6 +21,7 @@ my $globalDebugFile = 0;
 sub loadConfigFile
 {
 	my $configFilePath = $_[0];
+	print "Config Path from UTIL: " . $configFilePath . "\n";
 	#create the configuration file hash
 	my %configHash;
 	#open the file for reads
@@ -28,8 +29,14 @@ sub loadConfigFile
 	while (<OUTPUT_FILE>)
 	{
 		chomp();
+		print "Util raw line: ";
+		print;
+		print "\n";
 		my ($key, $value) = split(/=/);
+		print "Util found key: " . $key . "\n";
+		print "Util found value: " . $value . "\n";
 		$value =~ s/;//g;
+		print "Util modified value: " . $value . "\n";
 		$configHash{$key} = $value;
 	}
 	close(OUTPUT_FILE);
@@ -42,6 +49,8 @@ sub debugPrint
 	my ($data, $filename) = @_;
 	my $debugFile = $globalDebugFile;
 	my $isPrinting = $globalDebugFlag;
+	my $callingModule = caller();
+	$data = $callingModule . ": " . $data;
 	if ($filename != undef)
 	{
 		$debugFile = $filename;
