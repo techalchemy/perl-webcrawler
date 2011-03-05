@@ -12,7 +12,6 @@
 # file and what they do
 #	
 # TASKS FOR THIS THING
-# TODO: turn adding jobs to queue into function, use seeds adding syntax
 # TODO: fix how workerThread function works
 #			possibly is working, but run experiment
 # TODO: remove excess code
@@ -54,9 +53,10 @@ require 'Util.pm';
 use Util;
 
 my %options;
-my @pendingJobs :shared;
+
 my %threadState :shared;
 my %threadResults;
+my @pendingJobs :shared;
 
 my @threadPool;
 
@@ -67,7 +67,6 @@ print "finished running webCrawler.pl\n";
 sub main
 {
 	#set debugging mode and logging
-	
 	# obtain the configuration parameters
 	# assumes config file path is first parameter
 	# grab config file path
@@ -90,16 +89,17 @@ sub main
 	Util::debugPrint ( 'seed file loaded' );
 	
 	#initialize the job queue
+	my $jobQueueReference :shared = \@pendingJobs;
 	#TODO figure out how to pass the jobs
 	my @seedRecords = buildPageRecords(0, @seeds);
-	addJobsToQueue(\@seedRecords);
+	addJobsToQueue(\@seedRecords, $jobQueueReference);
 	Util::debugPrint ( 'seeds added to job queue ');
 	#initialize the threads
 	Util::debugPrint ( 'initializing threads and starting crawl' );
 	for (my $index; $index < $options{'numWorkers'}; $index++)
 	{
 		Util::debugPrint ("creating thread #" . int($index) );
-		push(@threadPool, threads->create(\&workerThread));
+		push(@threadPool, threads->create(\&workerThread, $jobQueueReference));
 	}
 	
 	while (threads->list(threads::running))
@@ -115,9 +115,14 @@ sub main
 sub addJobsToQueue
 {
 	my @pageRecords = @{$_[0]};
+	my $jobQueueReference = $_[1];
+	Util::debugPrint('address of job queue => ' . $jobQueueReference );
 	foreach(@pageRecords)
 	{
-		push(@pendingJobs, shared_clone($_)); 
+		my $clonedRef :shared = shared_clone($_);
+		#Util::debugPrint('adding job to queue: ' . $clonedRef->{url});
+		
+		push(@$jobQueueReference, $clonedRef); 
 	}
 }
 
@@ -173,6 +178,7 @@ sub getCurrentTimeString
 sub processPage
 {
 	my $pageRecord = shift;
+	my $jobQueueReference = shift;
 	my $siteContents = get ($pageRecord->{url});
 	my $parsedPage = SiteParser::parseData($siteContents);
 	Util::debugPrint(' processing ' . $pageRecord->{url});
@@ -188,13 +194,14 @@ sub processPage
 		Util::debugPrint(" building records");
 		@resultPageRecords = buildPageRecords($currentLinkDepth++, @currentPageLinks);
 	}
-	addJobsToQueue(\@resultPageRecords);
+	addJobsToQueue(\@resultPageRecords, $jobQueueReference);
 }
 
 # FIXME: this isn't coded properly
 sub workerThread
 {
 	#print "thread " . threads->tid() . "\n";
+	my $jobQueueReference = $_[0];
 	my $isRunning = 1;
 	while ($isRunning)
 	{
@@ -213,7 +220,7 @@ sub workerThread
 		{
 			Util::debugPrint("job: " . $newPage->{url});
 			Util::debugPrint('processing page');
-			processPage($newPage);
+			processPage($newPage, $jobQueueReference);
 		}
 		my @runningThreads = threads->list(threads::all);
 		foreach (@runningThreads)
