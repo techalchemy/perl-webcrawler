@@ -19,8 +19,8 @@
 # TODO: documentation
 # TODO: build domain graph
 #			discuss issues and run experiment
+# TODO: fix linkDepth off by one error
 # TODO: what is $_
-# TODO: sleep vs. yield
 # TODO: array declaration [] ()
 #	
 #
@@ -92,10 +92,7 @@ sub main
 	#initialize the job queue
 	#TODO figure out how to pass the jobs
 	my @seedRecords = buildPageRecords(0, @seeds);
-	foreach (@seedRecords) { 
-		#my %jobHash = %{shared_clone(\%{$_})};
-		push(@pendingJobs, shared_clone(\%{$_})); 
-	}
+	addJobsToQueue(\@seedRecords);
 	Util::debugPrint ( 'seeds added to job queue ');
 	#initialize the threads
 	Util::debugPrint ( 'initializing threads and starting crawl' );
@@ -113,6 +110,15 @@ sub main
 		}
 	}
 	
+}
+
+sub addJobsToQueue
+{
+	my @pageRecords = @{$_[0]};
+	foreach(@pageRecords)
+	{
+		push(@pendingJobs, shared_clone($_)); 
+	}
 }
 
 ######################################################################################
@@ -173,22 +179,16 @@ sub processPage
 	#output the page here
 	
 	#prune the links here
-	
+	my @currentPageLinks = @{$parsedPage->links};
 	#add the links to the queue
 	my @resultPageRecords = ();
-	#Util::debugPrint("thread: " . threads->tid() . "\tlinks: " . join(" ", @{$parsedPage->links}));
-	if ($pageRecord->{linkDepth} < $options{linkDepth})
+	my $currentLinkDepth = $pageRecord->{linkDepth};
+	if ($currentLinkDepth < $options{'linkDepth'})
 	{
 		Util::debugPrint(" building records");
-		@resultPageRecords = buildPageRecords($pageRecord->{linkDepth} + 1, @{$parsedPage->links});
+		@resultPageRecords = buildPageRecords($currentLinkDepth++, @currentPageLinks);
 	}
-	foreach (@resultPageRecords)
-	{
-		Util::debugPrint(' adding ' . $_->{url} . ' to queue');		
-		my $sharedRef :shared = share($_);
-		#FIXME: this is where the error is occuring
-		push (@pendingJobs, \%{$sharedRef});
-	}
+	addJobsToQueue(\@resultPageRecords);
 }
 
 # FIXME: this isn't coded properly
