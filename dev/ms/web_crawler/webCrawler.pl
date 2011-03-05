@@ -41,6 +41,7 @@ use threads::shared;
 use Thread::Queue;
 use LWP::Simple;
 use Class::Struct;
+use Thread qw(async);
 #declare structs used by crawler
 struct(PAGE_RECORD => {url => '$',
 					   timestamp => '$',
@@ -56,9 +57,6 @@ my %options;
 
 my %threadState :shared;
 my %threadResults;
-my @pendingJobs :shared;
-
-my @threadPool;
 
 print "starting webCrawler.pl...\n";
 main();
@@ -89,19 +87,22 @@ sub main
 	Util::debugPrint ( 'seed file loaded' );
 	
 	#initialize the job queue
-	my $jobQueueReference :shared = \@pendingJobs;
+	my $pendingJobs = new Thread::Queue;
+	#share(@pendingJobs);
 	#TODO figure out how to pass the jobs
 	my @seedRecords = buildPageRecords(0, @seeds);
-	addJobsToQueue(\@seedRecords, $jobQueueReference);
+	
 	Util::debugPrint ( 'seeds added to job queue ');
 	#initialize the threads
 	Util::debugPrint ( 'initializing threads and starting crawl' );
 	for (my $index; $index < $options{'numWorkers'}; $index++)
 	{
 		Util::debugPrint ("creating thread #" . int($index) );
-		push(@threadPool, threads->create(\&workerThread, $jobQueueReference));
+		threads->create(\&workerThread, $pendingJobs);
 	}
 	
+	#add jobs to queue
+	addJobsToQueue(\@seedRecords, $pendingJobs);
 	while (threads->list(threads::running))
 	{
 		foreach (threads->list(threads::joinable))
@@ -115,14 +116,12 @@ sub main
 sub addJobsToQueue
 {
 	my @pageRecords = @{$_[0]};
-	my $jobQueueReference = $_[1];
-	Util::debugPrint('address of job queue => ' . $jobQueueReference );
+	my $jobs = $_[1];
+	Util::debugPrint('address of job queue => ' . \$jobs );
 	foreach(@pageRecords)
 	{
-		my $clonedRef :shared = shared_clone($_);
-		#Util::debugPrint('adding job to queue: ' . $clonedRef->{url});
-		
-		push(@$jobQueueReference, $clonedRef); 
+		#push(@pendingJobs, shared_clone($_));
+		$jobs->enqueue($_);
 	}
 }
 
@@ -133,7 +132,7 @@ sub addJobsToQueue
 #			content - This should be the HTML page contents. A single scalar holding
 #			all the data is expected
 #		Return
-#			A human readable using string indicating the current time
+#			A human readable using strinpopg indicating the current time
 #
 ######################################################################################
 sub buildPageRecords
@@ -178,7 +177,7 @@ sub getCurrentTimeString
 sub processPage
 {
 	my $pageRecord = shift;
-	my $jobQueueReference = shift;
+	my $pendingJobs = shift;
 	my $siteContents = get ($pageRecord->{url});
 	my $parsedPage = SiteParser::parseData($siteContents);
 	Util::debugPrint(' processing ' . $pageRecord->{url});
@@ -194,44 +193,62 @@ sub processPage
 		Util::debugPrint(" building records");
 		@resultPageRecords = buildPageRecords($currentLinkDepth++, @currentPageLinks);
 	}
-	addJobsToQueue(\@resultPageRecords, $jobQueueReference);
+	addJobsToQueue(\@resultPageRecords, $pendingJobs);
 }
 
 # FIXME: this isn't coded properly
 sub workerThread
 {
-	#print "thread " . threads->tid() . "\n";
-	my $jobQueueReference = $_[0];
-	my $isRunning = 1;
-	while ($isRunning)
+	my $pendingJobs = $_[0];
+	while (my $newJob = $pendingJobs->dequeue())
 	{
-		Util::debugPrint('running');
-		$threadState{threads->tid()} = 'RUNNING';
-		my $newPage;
-		$newPage = pop @pendingJobs;
-		
-		if ($newPage == undef)
-		{
-			Util::debugPrint('going to wait mode');
-			$threadState{threads->tid()} = 'WAIT';
-			threads->yield();
-		}
-		else
-		{
-			Util::debugPrint("job: " . $newPage->{url});
-			Util::debugPrint('processing page');
-			processPage($newPage, $jobQueueReference);
-		}
-		my @runningThreads = threads->list(threads::all);
-		foreach (@runningThreads)
-		{
-			if ($threadState{$_->tid()} eq 'RUNNING')
-			{
-				$isRunning = 1;
-				next;
-			}
-		}
-		$isRunning = 0;
+		processPage($newJob, $pendingJobs);
 	}
+	#print "thread " . threads->tid() . "\n";
+#	my $isRunning = 1;
+#	while ($isRunning)
+#	{
+##		{
+##			lock(@pendingJobs);
+##			my $newJob = shift @pendingJobs;
+##		}	my 
+##		if ($newJob == undef)
+##		{
+##			threads->yield();
+##			next;
+##		}
+##	}
+#		Util::debugPrint('running');
+#		$threadState{threads->tid()} = 'RUNNING';
+#		my $newPage;
+#		{
+#			lock(@pendingJobs);
+#			$newPage = shift @pendingJobs;
+#		}
+#		
+#		
+#		if ($newPage == undef)
+#		{
+#			Util::debugPrint('going to wait mode');
+#			$threadState{threads->tid()} = 'WAIT';
+#			threads->yield();
+#		}
+#		else
+#		{
+#			Util::debugPrint("job: " . $newPage->{url});
+#			Util::debugPrint('processing page');
+#			processPage($newPage);
+#		}
+#		my @runningThreads = threads->list(threads::all);
+#		foreach (@runningThreads)
+#		{
+#			if ($threadState{$_->tid()} eq 'RUNNING')
+#			{
+#				$isRunning = 1;
+#				next;
+#			}
+#		}
+#		$isRunning = 0;
+#	}
 	Util::debugPrint('finished');
 }
