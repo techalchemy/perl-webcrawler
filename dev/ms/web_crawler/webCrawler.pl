@@ -10,7 +10,18 @@
 # perl executable. This will allow multiple threads to run.
 # The following is a list of the config parameters that can be set in a config
 # file and what they do
-#
+#	
+# TASKS FOR THIS THING
+# TODO: turn adding jobs to queue into function, use seeds adding syntax
+# TODO: fix how workerThread function works
+#			possibly is working, but run experiment
+# TODO: remove excess code
+# TODO: documentation
+# TODO: build domain graph
+#			discuss issues and run experiment
+# TODO: what is $_
+# TODO: sleep vs. yield
+# TODO: array declaration [] ()
 #	
 #
 #																				 
@@ -47,7 +58,7 @@ my @pendingJobs :shared;
 my %threadState :shared;
 my %threadResults;
 
-my @threadPool = 0;
+my @threadPool;
 
 print "starting webCrawler.pl...\n";
 main();
@@ -82,7 +93,7 @@ sub main
 	#TODO figure out how to pass the jobs
 	my @seedRecords = buildPageRecords(0, @seeds);
 	foreach (@seedRecords) { 
-		my %jobHash = %{shared_clone(\%{$_})};
+		#my %jobHash = %{shared_clone(\%{$_})};
 		push(@pendingJobs, shared_clone(\%{$_})); 
 	}
 	Util::debugPrint ( 'seeds added to job queue ');
@@ -122,9 +133,9 @@ sub buildPageRecords
 	{
 		my %recordHash;
 		my $newRecord = \%recordHash;
-		$newRecord->{url} = ($_);
-		$newRecord->{linkDepth} = ($linkDepth);
-		$newRecord->{timestamp} = (getCurrentTimeString());
+		$newRecord->{url} = $_;
+		$newRecord->{linkDepth} = $linkDepth;
+		$newRecord->{timestamp} = getCurrentTimeString();
 		push (@pageRecords, $newRecord);
 	}
 	return @pageRecords;
@@ -162,6 +173,7 @@ sub processPage
 	#output the page here
 	
 	#prune the links here
+	
 	#add the links to the queue
 	my @resultPageRecords = ();
 	#Util::debugPrint("thread: " . threads->tid() . "\tlinks: " . join(" ", @{$parsedPage->links}));
