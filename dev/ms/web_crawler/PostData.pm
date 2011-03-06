@@ -8,22 +8,22 @@
 # The serialized JSON encoded struct will have an insertion of a random number of
 # random length at a random position for preventing unauthorized deserialization.
 # The length and position of this number will be passed in the headers to the
-# data processing script, along with a unique UserAgent identifier
+# data processing script, along with a unique PostData_userAgent identifier
 # NB: Install modules JSON and PHP::Serialize
 ######################################################################################
 # Declare in config files (key/value pairs):
-#	userAgent=AgentName
-#	authName=Username
-#	userPass=PasswordSeed
-#	serverLocation=php script location path
+#	PostData_userAgent=AgentName
+#	PostData_authName=Username
+#	PostData_userPass=PasswordSeed
+#	PostData_serverLocation=php script location path
 ######################################################################################
 # Expect as return:
 #	Valid return packet in Serialized JSON encoded key/value confirmation array in format:
-#	{DataReceived: 1/0, UserAuthSuccess: 1/0, }
+#	{DataReceived: 1/0, Success: 1/0, }
 ######################################################################################
 # USAGE INSTRUCTIONS
-# CALL PostData::setConfigValues(%configHashTable) (returns void)
-# CALL PostData::sendToDB(structObject) (returns true/false)
+# CALL PostData::setConfigValues(\%configHashTable) (returns void)
+# CALL PostData::sendToDB(urgencyflag, object1.....object n) (returns true/false)
 ######################################################################################
 
 # Declare Class Name
@@ -37,18 +37,18 @@ use strict;
 use Util;
 use PHP::Serialization qw(serialize unserialize);
 use JSON::XS;
-use LWP::UserAgent;
+use LWP::userAgent;
 use Digest::SHA qw(sha256);
 
 # Define static variables
-my $configFile;
 my $encodedData;
 
+# CONFIG DATA WE NEED: PostData_userAgent, PostData_authName, PostData_userPass, serverLocation, urgencyFlag, 
 my %configHash = {
-	"userAgent", 'dataPoster',
-	"authName", 0,
-	"userPass", 'default password',
-	"serverLocation", 'localhost'
+	"PostData_userAgent" => 'dataPoster',
+	"PostData_authName" => 0,
+	"PostData_userPass" => 'default password',
+	"PostData_serverLocation" => 'localhost'
 };
 my %headerInfo = {
 	"transportReplaceStart", 0,
@@ -61,15 +61,6 @@ my %headerInfo = {
 my %hashedStruct = {
 };
 
-# Relative path of the config file location and loading for isolation testing
-#$configFile = "commConfig.conf";
-#%configHash = Util::loadConfigFile($configFile);
-
-# Take hash values passed from main script
-sub getCfgInfo 
-{
-	Util::getConfig();
-}
 sub setConfigValues
 {
 	%configHash = %{$_[0]};
@@ -79,9 +70,14 @@ sub setConfigValues
 # UFlag: 0 = non-urgent; 1 = expedite; 2 = extremely urgent
 sub sendToDB
 {
+	my ($urgFlag, @passedParams) = @_;
 	# Set config urgency flag
-	$headerInfo{"urgencyFlag"} = $_[0];
+	$headerInfo{"urgencyFlag"} = $urgFlag;
 	# Check struct conversion to serialized and randomized JSON
+	#foreach(@passdParams) 
+	#{
+#		
+	#}
 	if (convertFromStruct($_[1]))
 	{
 		print "Struct object successfully converted\n";
@@ -177,7 +173,7 @@ sub insertRandomString
 }
 sub encodePassword
 {
-	my $decodedPassText = $configHash{"userPass"};
+	my $decodedPassText = $configHash{"PostData_userPass"};
 	# generate encryption salt (this string is 30 concatenated ascii characters)
 	my $saltVal = eval sprintf q[(%s)], join q[ . ] => ('chr(int(rand(92))+33)') x 30;
 	# Salt the password with the string
@@ -190,7 +186,7 @@ sub encodePassword
 	return 1;
 }
 
-# Stuff to know for transport: configHash has userAgent, authName, serverLocation
+# Stuff to know for transport: configHash has PostData_userAgent, PostData_authName, PostData_serverLocation
 # headerInfo has transportReplaceStart, transportReplaceLen, encodedPass, passEncodeKey
 # encodedData is being sent
 # send all info via HTTPS
@@ -200,7 +196,7 @@ sub shipData
 	# Begin with header object declaring content and agent types
 	my $headerObj = HTTP::Headers->new(
 	Content_Type => 'text/html',
-	User_Agent => $configHash{"userAgent"}
+	User_Agent => $configHash{"PostData_userAgent"}
 	);
 	# Pass header object encoding metadata
 	$headerObj->header(
@@ -209,18 +205,19 @@ sub shipData
 	-passEncodeKey => $headerInfo{"passEncodeKey"},
 	-urgencyFlag => $headerInfo{"urgencyFlag"}
 	);
-	# NB: Submit via form: %configHash{"authName"}, %headerInfo{"encodedPass"}, $encodedData
+	# NB: Submit via form: %configHash{"PostData_authName"}, %headerInfo{"encodedPass"}, $encodedData
 	# Instantiate Request Objet for Form post to server
 	# TODO Add form data
-	my $httpRequest = POST $configHash{"serverLocation"}, [
-	authName => $configHash{"authName"},
+	my $httpRequest = POST $configHash{"PostData_serverLocation"}, [
+	authName => $configHash{"PostData_authName"},
 	userPass => $headerInfo{"encodedPass"},
 	dataPackage => $encodedData
 	];
-	# Instantiate new LWP UserAgent object to submit form request
-	my $commLink = LWP::UserAgent->new();
+	# Instantiate new LWP PostData_userAgent object to submit form request
+	#TODO Make all of the commlink stuff declared in the instantiation
+	my $commLink = LWP::PostData_userAgent->new();
 	$commLink->headers($headerObj);
-	$commLink->agent($configHash{"userAgent"});
+	$commLink->agent($configHash{"PostData_userAgent"});
 	# Read response for bit flag indicators
 	my $httpResponse = $commLink->request($httpRequest);
 	my $httpData = $httpResponse->content;
