@@ -84,32 +84,32 @@ sub sendToDB
 	# Check struct conversion to serialized and randomized JSON
 	if (convertFromStruct($_[1]))
 	{
-		print "\n\n\n\nStruct object successfully converted\n\n\n\n";
+		print "Struct object successfully converted\n";
 	}
 	else 
 	{
-		print "\n\n\n\nStruct object conversion failure\n\n\n\n";
+		print "Struct object conversion failure\n";
 		return 0;
 	}
 	# Check password encoding & rewrite to hash table as encodedPass
 	if (encodePassword())
 	{
-		print "\n\n\n\n\nPassword successfully encoded\n\n\n\n\n";
+		print "Password successfully encoded\n";
 	}
 	else
 	{
-		print "\n\n\n\n\nPassword endoding failure\n\n\n\n\n";
+		print "Password endoding failure\n";
 		return 0;
 	}
 	# use $encodedData value set by insertRandomString
 	if (shipData($encodedData))
 	{
-		print "\n\n\n\n\n\n\nData Sent!\n\n\n\n\n\n\n";
+		print "Data Sent!\n";
 		return 1;
 	}
 	else
 	{
-		print "\n\n\n\n\n\n\nData Sending Failure\n\n\n\n\n\n\n";
+		print "Data Sending Failure\n";
 		return 0;
 	}
 		
@@ -123,11 +123,11 @@ sub convertFromStruct
 	# Error checking
 	if ($jsonStruct)
 	{
-		print "\nJSON Encoding Successful\n";
+		print "JSON Encoding Successful\n";
 	}
 	else
 	{
-		print "\nJSON Encoding Failed\n";
+		print "JSON Encoding Failed\n";
 		return 0;
 	}
 	# PHP Serialize the JSON value
@@ -135,21 +135,21 @@ sub convertFromStruct
 	# More error checking
 	if ($serialData)
 	{
-		print "\n\nSerialization Successful\n\n";
+		print "Serialization Successful\n";
 	}
 	else
 	{
-		print "\n\nSerialization Failed\n\n";
+		print "Serialization Failed\n";
 		return 0;
 	}
 	# Call insert function to encode serial data
 	if(insertRandomString($serialData))
 	{
-		print "\n\n\nString randomization complete\n\n\n";
+		print "String randomization complete\n";
 	}
 	else
 	{
-		print "\n\n\nString randomization failed\n\n\n";
+		print "String randomization failed\n";
 		return 0;
 	}
 }
@@ -178,10 +178,8 @@ sub insertRandomString
 sub encodePassword
 {
 	my $decodedPassText = $configHash{"userPass"};
-	# generate encryption salt (this array is 30 ascii characters)
-	my @saltVals = eval sprintf q[(%s)], join q[,] => ('chr(int(rand(92)))+33') x 30;
-	# Convert the array to a string
-	my $saltVal = join(",",@saltVals);
+	# generate encryption salt (this string is 30 concatenated ascii characters)
+	my $saltVal = eval sprintf q[(%s)], join q[ . ] => ('chr(int(rand(92))+33)') x 30;
 	# Salt the password with the string
 	my $saltedPass = $saltVal . $decodedPassText;
 	# SHA-2 encryption for SALT
@@ -202,7 +200,7 @@ sub shipData
 	# Begin with header object declaring content and agent types
 	my $headerObj = HTTP::Headers->new(
 	Content_Type => 'text/html',
-	User_Agent => $configHash{"userAgent"},
+	User_Agent => $configHash{"userAgent"}
 	);
 	# Pass header object encoding metadata
 	$headerObj->header(
@@ -233,12 +231,12 @@ sub shipData
 	my $responseString;
 	if (($responseArray[0] == 1) and ($responseArray[1] == 1))
 	{
-		$responseString = "\n\n\n\n\n\nAuthenticated and Transmitted\n\n\n\n\n\n";
+		$responseString = "Authenticated and Transmitted\n";
 		return 1;
 	}
 	else
 	{
-		$responseString = "\n\n\n\n\n\nData Failed to Transfer\n\n\n\n\n\n";
+		$responseString = "Data Failed to Transfer\n";
 		return 0;
 	}
 }
