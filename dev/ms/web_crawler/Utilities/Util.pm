@@ -1,7 +1,8 @@
 use threads;
 
 package Util;
-
+use Exporter 'import'; # gives you Exporter's import() method directly
+@EXPORT_OK = qw(debugPrint); # symbols to export on request
 
 ######################################################################################
 # DEBUGGING static variables	
@@ -121,22 +122,22 @@ sub setThreadRecord
 {
 	$recordThreadFlag = $_[0];
 }
-sub getConfig
-{
-	my $callerPrefix = caller() . "_";
-	$callerPrefix = lc($callerPrefix);
-	debugPrint(" Called by " . $callerPrefix ."\n");
-	my %returnHash;
-	# change %config back to %options for later use
-	foreach $optionName (keys %config) {
-		$optionName = lc($optionName);
-		debugPrint("Found option: " . $optionName . "\n"); 
-		if ($optionName =~ m/^($callerPrefix)/)
-		{
-			$returnHash{$'} =~ $options{$optionName};
-		}
-	}
-	return %returnHash;
-}
+# sub getConfig
+#{
+#	my $callerPrefix = caller() . "_";
+#	$callerPrefix = lc($callerPrefix);
+#	debugPrint(" Called by " . $callerPrefix ."\n");
+#	my %returnHash;
+#	# change %config back to %options for later use
+#	foreach $optionName (keys %config) {
+#		$optionName = lc($optionName);
+#		debugPrint("Found option: " . $optionName . "\n"); 
+#		if ($optionName =~ m/^($callerPrefix)/)
+#		{
+#			$returnHash{$'} =~ $options{$optionName};
+#		}
+#	}
+#	return %returnHash;
+#}
 
 1;
