@@ -59,10 +59,10 @@ struct(PAGE_RECORD => {url => '$',
 					  });
 
 # get local modules
-require 'SiteParser.pm';
-use SiteParser;
-require 'Util.pm';
-use Util qw(debugPrint);
+require 'Parsing/SiteParser.pm';
+use Parsing::SiteParser;
+require 'Utilities/Util.pm';
+use Utilities::Util qw(debugPrint);
 
 my %options;
 
