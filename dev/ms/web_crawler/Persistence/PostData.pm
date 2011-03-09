@@ -30,6 +30,7 @@
 package PostData;
 use Exporter 'import'; # gives you Exporter's import() method directly
 @EXPORT_OK = qw(sendToDB); # symbols to export on request
+
 # Define namespaces, include Util for config parsing
 use lib '..';
 require 'Utilities/Util.pm';
@@ -38,7 +39,7 @@ use HTTP::Request::Common qw(POST GET);
 use strict;
 use Utilities::Util qw(debugPrint);
 use PHP::Serialization qw(serialize unserialize);
-use JSON::XS qw(json_encode json_decode);
+use JSON::XS qw(encode_json decode_json);
 use LWP::UserAgent;
 use Digest::SHA qw(sha256);
 
@@ -128,7 +129,7 @@ sub convertToJson
 		my %hashedStruct = %{$initialData};
 
 		# Convert hash table to JSON
-		$jsonStruct = json_encode(%hashedStruct);
+		$jsonStruct = encode_json(%hashedStruct);
 		debugPrint(1, "FOUND DATA TYPE: HASHREF");
 	}
 	elsif ($initialData =~ m/^ARRAY/)
@@ -137,7 +138,7 @@ sub convertToJson
 		my @arrayStruct = @{$initialData};
 
 		# Convert hash table to JSON
-		$jsonStruct = json_encode(@arrayStruct);
+		$jsonStruct = encode_json(@arrayStruct);
 		debugPrint(1, "FOUND DATA TYPE: ARRAYREF");		
 	}
 	elsif ($initialData =~ m/^SCALAR/)
@@ -146,7 +147,7 @@ sub convertToJson
 		my $scalarStruct = $$initialData;
 
 		# Convert hash table to JSON
-		$jsonStruct = json_encode($scalarStruct);
+		$jsonStruct = encode_json($scalarStruct);
 		debugPrint(1, "FOUND DATA TYPE: SCALARREF");
 	}
 	# IF ITS A REF TO A REF ???
@@ -167,7 +168,7 @@ sub convertToJson
 	}
 	else 
 	{
-		$jsonStruct = json_encode($initialData);
+		$jsonStruct = encode_json($initialData);
 	}
 
 	# Error checking
@@ -280,9 +281,9 @@ sub shipData
 	
 	# Pass header object encoding metadata
 	# build header w/ foreach loop on header data (json encode)
-	my $transStartInfo = json_encode(@replaceStartVals);
+	my $transStartInfo = encode_json(@replaceStartVals);
 	debugPrint(1, "TRANSFER START BITS: " . $transStartInfo);
-	my $transLenInfo = json_encode(@replaceLenVals);
+	my $transLenInfo = encode_json(@replaceLenVals);
 	debugPrint(1, "TRANSFER STREAM LENGTH: " . $transLenInfo);
 	$headerObj->header(
 	-transportReplaceStart => $transStartInfo,
@@ -291,7 +292,7 @@ sub shipData
 	-urgencyFlag => $headerInfo{"urgencyFlag"}
 	);
 	
-	my $sendThisData = json_encode(@formData);
+	my $sendThisData = encode_json(@formData);
 	debugPrint(1, "FORM DATA: " . $sendThisData);
 	my $httpRequest = POST $configHash{"PostData_serverLocation"}, [
 	authName => $configHash{"PostData_authName"},
@@ -309,9 +310,9 @@ sub shipData
 	my $httpResponse = $commLink->request($httpRequest);
 	my $httpData = $httpResponse->content;
 
-	# Unserialize response data and json_decode it into an array
+	# Unserialize response data and decode_json it into an array
 	my $responseJson = unserialize $httpResponse;
-	my @responseArray = json_decode $responseJson;
+	my @responseArray = decode_json $responseJson;
 
 	# Check if the operation succeeded
 	my $responseString;
