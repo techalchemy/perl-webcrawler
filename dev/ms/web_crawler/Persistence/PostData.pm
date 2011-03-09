@@ -30,11 +30,12 @@
 package PostData;
 
 # Define namespaces, include Util for config parsing
-require 'Util.pm';
+use lib '..';
+require 'Utilities/Util.pm';
 require HTTP::Headers;
 use HTTP::Request::Common qw(POST GET);
 use strict;
-use Util;
+use Utilities::Util;
 use PHP::Serialization qw(serialize unserialize);
 use JSON::XS;
 use LWP::UserAgent;
