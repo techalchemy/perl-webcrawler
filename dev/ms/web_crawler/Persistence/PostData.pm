@@ -35,9 +35,9 @@ require 'Utilities/Util.pm';
 require HTTP::Headers;
 use HTTP::Request::Common qw(POST GET);
 use strict;
-use Utilities::Util;
+use Utilities::Util qw(debugPrint);
 use PHP::Serialization qw(serialize unserialize);
-use JSON::XS;
+use JSON::XS qw(json_encode json_decode);
 use LWP::UserAgent;
 use Digest::SHA qw(sha256);
 
@@ -76,38 +76,39 @@ sub sendToDB
 	# Set config urgency flag
 	$headerInfo{"urgencyFlag"} = $urgFlag;
 	my $paramData;
+	#TODO add checking to $_[1] for isnum
 	# Check struct conversion to serialized and randomized JSON
 	foreach $paramData (@passedParams) 
 	{
 		if (convertToJson($paramData)) 
 		{
-			Util::debugPrint("Converting Data to JSON: Success");
+			debugPrint(1, "Converting Data to JSON: Success");
 		}
 		else
 		{
-			Util::debugPrint("FAILURE: Converting data to JSON");
+			debugPrint(1, "FAILURE: Converting data to JSON");
 			return 0;
 		}	
 	}
 	# Check password encoding & rewrite to hash table as encodedPass
 	if (encodePassword())
 	{
-		print "Password successfully encoded\n";
+		debugPrint(1, "Password successfully encoded");
 	}
 	else
 	{
-		print "Password endoding failure\n";
+		debugPrint(1, "Password endoding failure");
 		return 0;
 	}
 	# use $encodedData value set by insertRandomString
 	if (shipData($encodedData))
 	{
-		print "Data Sent!\n";
+		debugPrint(1, "Data Sent!");
 		return 1;
 	}
 	else
 	{
-		print "Data Sending Failure\n";
+		debugPrint(1, "Data Sending Failure");
 		return 0;
 	}
 		
@@ -123,13 +124,15 @@ sub convertToJson
 		my %hashedStruct = %{$initialData};
 		# Convert hash table to JSON
 		$jsonStruct = json_encode(%hashedStruct);
+		debugPrint(1, "FOUND DATA TYPE: HASHREF");
 	}
 	elsif ($initialData =~ m/^ARRAY/)
 	{
 		# Typecast the array ref into an array
 		my @arrayStruct = @{$initialData};
 		# Convert hash table to JSON
-		$jsonStruct = json_encode(@arrayStruct);		
+		$jsonStruct = json_encode(@arrayStruct);
+		debugPrint(1, "FOUND DATA TYPE: ARRAYREF");		
 	}
 	elsif ($initialData =~ m/^SCALAR/)
 	{
@@ -137,12 +140,14 @@ sub convertToJson
 		my $scalarStruct = $$initialData;
 		# Convert hash table to JSON
 		$jsonStruct = json_encode($scalarStruct);
+		debugPrint(1, "FOUND DATA TYPE: SCALARREF");
 	}
 	# IF ITS A REF TO A REF ???
 	elsif ($initialData =~ m/^REF/)
 	{
 		#DeReference and ReCall this function
 		my $dereferencedRef = \$initialData;
+		debugPrint(1, "FOUND DATA TYPE: REF TO REF (RECALL FUNC)");
 		convertToJson($dereferencedRef);		
 	}
 	# If it's an object ref
@@ -150,6 +155,7 @@ sub convertToJson
 	{
 		# Pass the data type reference back to this function
 		$initialData =~ s/^\w+\=//;
+		debugPrint(1, "FOUND DATA TYPE: OBJECT REF (RECALL FUNCTION)");
 		convertToJson($initialData);
 	}
 	else 
@@ -159,11 +165,12 @@ sub convertToJson
 	# Error checking
 	if ($jsonStruct)
 	{
-		print "JSON Encoding Successful\n";
+		debugPrint(1, "JSON Encoding Successful");
+		debugPrint(1, $jsonStruct);
 	}
 	else
 	{
-		print "JSON Encoding Failed\n";
+		debugPrint(1, "JSON Encoding Failed");
 		return 0;
 	}
 	# PHP Serialize the JSON value
@@ -171,21 +178,21 @@ sub convertToJson
 	# More error checking
 	if ($serialData)
 	{
-		print "Serialization Successful\n";
+		debugPrint(1, "Serialization Successful");
 	}
 	else
 	{
-		print "Serialization Failed\n";
+		debugPrint(1, "Serialization Failed");
 		return 0;
 	}
 	# Call insert function to encode serial data
 	if(insertRandomString($serialData))
 	{
-		print "String randomization complete\n";
+		debugPrint(1, "String randomization complete");
 	}
 	else
 	{
-		print "String randomization failed\n";
+		debugPrint(1, "String randomization failed");
 		return 0;
 	}
 }
@@ -194,13 +201,18 @@ sub insertRandomString
 {
 	# Param: Serialized Value
 	my $decodedStringVal = $_[0];
+	debugPrint(1, "INITIAL SERIAL DATA: " . $decodedStringVal);
 	# Count the length of the value
 	my $stringLengthTotal = length($decodedStringVal);
+	debugPrint(1, "SERIAL STRING LENGTH: " . $stringLengthTotal);
 	# Determine start bit for random num insertion (casts start as random val b/w 0-stringLen)
 	my $startBitVal = int(rand($stringLengthTotal));
+	debugPrint(1, "SERIAL STARTING BIT: " . $startBitVal);
 	push(@replaceStartVals, $startBitVal);
 	# Determine random number & length of random string to insert & store in hash
-	my $replaceStringVal = int(rand(99999999999999999999999999999999999));
+	my $totalNums = 99999999999999999999999999999999999;
+	my $replaceStringVal = int(rand($totalNums));
+	debugPrint(1, "REPLACEMENT STRING: " . $replaceStringVal);
 	push(@replaceStrings, $replaceStringVal);
 	my $insertedLength = length($replaceStringVal);
 	push(@replaceLenVals, $insertedLength);
@@ -211,6 +223,7 @@ sub insertRandomString
 	my $finalDataLast = substr($decodedStringVal, $lastSubstrBit);
 	# Then, insert the new data in to the serial data
 	my $finalSerialData = $finalDataFirst . $replaceStringVal . $finalDataLast;
+	debugPrint(1, "FINAL SERIAL DATA: " . $finalSerialData);
 	push(@formData, $finalSerialData);
 	return 1;
 }
@@ -219,10 +232,12 @@ sub encodePassword
 	my $decodedPassText = $configHash{"PostData_userPass"};
 	# generate encryption salt (this string is 30 concatenated ascii characters)
 	my $saltVal = eval sprintf q[(%s)], join q[ . ] => ('chr(int(rand(92))+33)') x 30;
+	debugPrint(1, "PASSWORD SALT: " . $saltVal);
 	# Salt the password with the string
 	my $saltedPass = $saltVal . $decodedPassText;
 	# SHA-2 encryption for SALT
 	my $encodedPass = sha256($saltedPass);
+	debugPrint(1, "ENCRYPTED PASS: " . $encodedPass);
 	# Set the header values with the salt string and the encrypted password 
 	$headerInfo{"encodedPass"} = $encodedPass;
 	$headerInfo{"passEncodeKey"} = $saltVal;
@@ -244,7 +259,9 @@ sub shipData
 	# Pass header object encoding metadata
 	# build header w/ foreach loop on header data (json encode)
 	my $transStartInfo = json_encode(@replaceStartVals);
+	debugPrint(1, "TRANSFER START BITS: " . $transStartInfo);
 	my $transLenInfo = json_encode(@replaceLenVals);
+	debugPrint(1, "TRANSFER STREAM LENGTH: " . $transLenInfo);
 	$headerObj->header(
 	-transportReplaceStart => $transStartInfo,
 	-transportReplaceLen => $transLenInfo,
@@ -255,6 +272,7 @@ sub shipData
 	# Instantiate Request Objet for Form post to server
 	# TODO Add form data
 	my $sendThisData = json_encode(@formData);
+	debugPrint(1, "FORM DATA: " . $sendThisData);
 	my $httpRequest = POST $configHash{"PostData_serverLocation"}, [
 	authName => $configHash{"PostData_authName"},
 	userPass => $headerInfo{"encodedPass"},
@@ -283,6 +301,7 @@ sub shipData
 		$responseString = "Data Failed to Transfer\n";
 		return 0;
 	}
+	debugPrint(1, "RESPONSE TO REQUEST: " . $responseString);
 }
 
 1;
