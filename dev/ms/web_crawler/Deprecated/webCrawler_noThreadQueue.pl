@@ -72,9 +72,6 @@ sub main
 	# grab config file path
 	my $pendingJobs = &share([]);
 	my $crawledSites = &share({});
-	Util::setGlobalDebugFile('errors.dbg');
-	Util::debugPrint('ERR INVALID PENDING JOBS DECL: ' . $@ . "; " . $!. "; " . $^E . "; " . $?);
-	Util::setGlobalDebugFile('output.dbg');
 	my $configFilePath = $ARGV[0];
 	# load config params into %options
 	%options = Util::loadConfigFile($configFilePath);
@@ -99,6 +96,7 @@ sub main
 	#This returns an array containing references to hash tables w/ page record info
 	my @seedRecords = buildPageRecords(0, @seeds);
 	#Pushes reference to an array of hash references to the job queue by ref to shared array pendingJobs
+	Util::debugPrint('Adding jobs to queue');
 	addJobsToQueue(\@seedRecords, $pendingJobs);
 	showStack($pendingJobs);
 	Util::debugPrint ( 'seeds added to job queue ');
@@ -107,10 +105,7 @@ sub main
 	for (my $index; $index < $options{'numWorkers'}; $index++)
 	{
 		Util::debugPrint ("creating thread #" . int($index) );
-		Util::setGlobalDebugFile('errors.dbg');
 		push(@threadPool, threads->create(\&workerThread, $pendingJobs, $crawledSites));
-		Util::debugPrint('WORKER THREAD ERRORS: ' . $@ . "; " . $!. "; " . $^E . "; " . $?);
-		Util::setGlobalDebugFile('queueDebug.dbg');
 	}
 	
 	while (threads->list(threads::running))
@@ -123,50 +118,57 @@ sub main
 	
 }
 #Should take in 3 vals -- first ref to array of hash table refs, second to shared ar. ref
-#3rd a scalar ref to array of crawled sites
+#3rd a scalar ref to hash of crawled sites
 sub addJobsToQueue
 {
-	Util::setGlobalDebugFile('queueDebug.dbg');
 	#dereference the pagerecords array (now an array of hash refs)
 	my @pageRecords = @{$_[0]};
 	#Hang onto the jobqueue ref
 	my $jobQueueReference = $_[1];
 	my $sitesCrawledRef = $_[2];
+	Util::setGlobalDebugFile('queueDebug.dbg');
 	Util::debugPrint('JOB ADDER ADDING JOBS TO QUEUE');
 	foreach(@pageRecords)
 	{
 		#Make a shared clone of the hash table
 		#but first see if the url you want has already been accessed
-		my $pageURL = $_->{url};
+		Util::setGlobalDebugFile('errors.dbg');
+		my $clonedRef = &shared_clone($_);
+		Util::debugPrint('CLONING ERRORS: ' . $@ . "; " . $!. "; " . $^E . "; " . $?);
+		my $pageURL = $clonedRef->{url};
 		print "Analyzing URL: " . $pageURL . "\n";
-		if (exists $sitesCrawledRef->{$pageURL}) 
+		print("URL HASH RETURN: " . $sitesCrawledRef->{$pageURL} . '\n');
+		if ($sitesCrawledRef->{$pageURL})
 		{
 			Util::setGlobalDebugFile('sitesCrawled.dbg');
+			print('ERROR ADDING JOB: Site crawled previously: ' . $clonedRef->{url} . '\n');
 			Util::debugPrint('ERROR ADDING JOB: Site crawled previously: ' . $clonedRef->{url});
 			Util::setGlobalDebugFile('queueDebug.dbg')
 		}
 		else
 		{
+			print('ADDED JOB TO QUEUE (previously uncrawled): ' . $clonedRef->{url} . '\n');
 			Util::setGlobalDebugFile('sitesCrawled.dbg');
-			Util::debugPrint('JOB ADDED TO QUEUE (previously uncrawled): ' . $_->{url});
-			Util::setGlobalDebugFile('errors.dbg');
-			my $clonedRef = &shared_clone($_);
-		Util::debugPrint('CLONING ERRORS: ' . $@ . "; " . $!. "; " . $^E . "; " . $?);
+			Util::debugPrint('JOB ADDED TO QUEUE (previously uncrawled): ' . $pageURL);
 			Util::setGlobalDebugFile('queueDebug.dbg');
-			Util::debugPrint('Adding job to queue: ' . $clonedRef->{url});
+			Util::debugPrint('Pushing Job To queue: ' . $clonedRef->{url});
+			print("Pushing job to queue\n");
 			#Push the cloned hash refs to the jobqueue array w/ deref
 			#If this fails try with a $
 			if(push(@$jobQueueReference, $clonedRef))
 			{
 				Util::debugPrint('Job successfully added');
+				print("JOB PUSHED\n");
 				Util::setGlobalDebugFile('errors.dbg');
 				Util::debugPrint('PUSHED JOB: ' . $@ . "; " . $!. "; " . $^E . "; " . $?);
 				Util::setGlobalDebugFile('queueDebug.dbg');
-				$sitesCrawledRef->{$clonedRef->{url}} = 1;
+				$sitesCrawledRef->{$pageURL} = 1;
+				print('Setting sitesCrawledRef for ' . $pageURL . ' ; RETURN:' . $sitesCrawledRef{$pageURL} . '\n');
 				showStack($jobQueueReference, threads->tid());
 			} 
 			else
 			{
+				print("Pushing failed in addJobsToQueue\n");
 				Util::setGlobalDebugFile('errors.dbg');
 				Util::debugPrint('PUSH ERROR: ' . $@ . "; " . $!. "; " . $^E . "; " . $?);
 				Util::setGlobalDebugFile('queueDebug.dbg');
@@ -231,37 +233,41 @@ sub processPage
 {
 	my $pageRecord = shift;
 	my $jobQueueReference = shift;
+	my $pagesViewedRef = shift;
 	Util::setGlobalDebugFile('queueDebug.dbg');
 	my $siteContents = get ($pageRecord->{url});
 	Util::debugPrint('Retreiving data from: ' . $pageRecord->{url});
 	my $parsedPage = SiteParser::parseData($siteContents);
+	print("Parsing website data finished\n");
 	#Util::debugPrint(' processing ' . $pageRecord->{url});
 	#output the page here
 	
 	#prune the links here
 	my @currentPageLinks = @{$parsedPage->links};
-	@currentPageLinks = pruneLinks(@currentPageLinks);
-	Util::debugPrint('Links retrieved: ' . "@currentPageLinks");
+	my @cleanLinks = pruneLinks(@currentPageLinks);
+	Util::debugPrint('Links retrieved: ' . '@currentPageLinks');
 	#add the links to the queue
 	my @resultPageRecords;
 	my $currentLinkDepth = $pageRecord->{linkDepth};
 	if ($currentLinkDepth < $options{'linkDepth'})
 	{
 		Util::debugPrint(" THREAD BUILDING PAGE RECORDS");
+		print("Made it to page parsing, building records\n");
 		#Give the buildPageRecords func a linkdepth and array of links
-		@resultPageRecords = buildPageRecords($currentLinkDepth++, @currentPageLinks);
+		@resultPageRecords = buildPageRecords($currentLinkDepth++, @cleanLinks);
 		#Returns an array of hash table references
 	}
 	Util::setGlobalDebugFile('errors.dbg');
-	addJobsToQueue(\@resultPageRecords, $jobQueueReference);
+	addJobsToQueue(\@resultPageRecords, $jobQueueReference, $pagesViewedRef);
 	Util::debugPrint('ATTEMPTED TO ADD JOB: ' . $@ . "; " . $!. "; " . $^E . "; " . $?);
 	showStack($jobQueueReference);
 	Util::setGlobalDebugFile('output.dbg');
 }
 sub pruneLinks
 {
-	my @dirtyLinks = $_[0];
+	my @dirtyLinks = shift;
 	my @cleanLinks;
+	print('cleaning links\n');
 	foreach(@dirtyLinks)
 	{
 		my $linkVal = $dirtyLinks[$_];
@@ -269,6 +275,7 @@ sub pruneLinks
 		{
 			Util::setGlobalDebug('cleanLinks.dbg');
 			Util::debugPrint('FOUND CLEAN LINK: ' . $linkVal);
+			print('found match clean: ' . $linkVal . '\n');
 			Util::setGlobalDebugFile('queueDebug.dbg');
 			push(@cleanLinks, $linkVal);
 		}
@@ -276,12 +283,14 @@ sub pruneLinks
 	return @cleanLinks;
 }
 # FIXME: this isn't coded properly
+# PASSED REF TO LINKS CRAWLED
 sub workerThread
 {
 	#print "thread " . threads->tid() . "\n";
 	Util::setGlobalDebugFile('queueDebug.dbg');
 	Util::debugPrint('Instantiating thread: ' . threads->tid());
 	my $jobQueueReference = $_[0];
+	my $scannedLinksRef = $_[1];
 	showStack($jobQueueReference, threads->tid());
 	Util::debugPrint('thread[' . threads->tid() . ']: Job Queue Ref: ' . $jobQueueReference);
 	my $isRunning = 1;
@@ -328,12 +337,12 @@ sub showStack {
 	my ($jobQueueRef, $threadNum) = @_;
 	if ($threadNum)
 	{
-		Util::debugPrint('WORKER [' . $threadNum . '] CURRENT STACK: ' . "@$jobQueueReference");
+		Util::debugPrint('WORKER [' . $threadNum . '] CURRENT STACK: ' . '@$jobQueueReference');
 		Util::debugPrint('WORKER [' . $threadNum . '] STACK ERRORS: ' . $@ . "; " . $!. "; " . $^E . "; " . $?);	
 	}
 	else 
 	{
-	Util::debugPrint('NON-WORKER STACK: ' . "@$jobQueueReference");
+	Util::debugPrint('NON-WORKER STACK: ' . '@$jobQueueReference');
 	Util::debugPrint('NON-WORKER STACK ERRORS: ' . $@ . "; " . $!. "; " . $^E . "; " . $?);	
 	}
 	Util::setGlobalDebugFile('queueDebug.dbg');
