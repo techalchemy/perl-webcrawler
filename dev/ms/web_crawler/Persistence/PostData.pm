@@ -28,7 +28,8 @@
 
 # Declare Class Name
 package PostData;
-
+use Exporter 'import'; # gives you Exporter's import() method directly
+@EXPORT_OK = qw(sendToDB); # symbols to export on request
 # Define namespaces, include Util for config parsing
 use lib '..';
 require 'Utilities/Util.pm';
