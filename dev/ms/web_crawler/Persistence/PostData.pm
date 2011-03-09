@@ -64,10 +64,7 @@ my %headerInfo = {
 	"encodedPass", 'blank',
 	"passEncodeKey", 'blank'
 };
-sub setConfigValues
-{
-	%configHash = %{$_[0]};
-};
+
 # Call main function for processing -- Returns False on any failure
 # Pass this function the uflag and struct (uflag, struct)
 # UFlag: 0 = non-urgent; 1 = expedite; 2 = extremely urgent
