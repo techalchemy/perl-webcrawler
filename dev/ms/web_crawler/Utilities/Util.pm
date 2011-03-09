@@ -49,10 +49,19 @@ sub loadConfigFile
 
 sub debugPrint
 {
+	#Take all of the parameters into an array called '@data'
 	my @data = @_;
+	# Return if there is no debug flag set
 	if (!$globalDebugFlag) { return; }
-	my $debugFile = $globalDebugFile;
+	# Determine where the debug is coming from
 	my $callingModule = caller();
+	# If the first parameter is '1', enable caller-based file organization for debugging
+	if ($_data[0] == 1) { 
+		my $debugFile = $callingModule . ".dbg";
+		pop @data;
+	 }
+	 # Otherwise use the normal global debug file
+	else { my $debugFile = $globalDebugFile; }
 	$callingModule . ": " . $data;
 	open (OUTPUT_FILE, ">>", $debugFile);
 	print OUTPUT_FILE $callingModule;
