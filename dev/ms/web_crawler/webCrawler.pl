@@ -217,9 +217,9 @@ sub processPage
 	# LINE ADDED FOR DAN --  I WANT PRUNED LINKS BACK FOR DB
 	$parsedPage->links->{@prunedPageLinks};
 	
-	#output the page here using sendToDB(urgency, confighashref, parsed page object, and whatever else you want)
+	#output the page here using sendToDB(urgency, confighashref, url, parsed page object, and whatever else you want)
 	Util::debugPrint('Sending Page to Output for DB');
-	if(sendToDB(0, \%options, $parsedPage))
+	if(sendToDB(0, \%options, $pageRecord->{url}, $parsedPage))
 	{
 		debugPrint(1, 'SENT OUTPUT SUCCESSFULLY');
 	}

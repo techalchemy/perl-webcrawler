@@ -71,13 +71,14 @@ my %headerInfo = {
 # UFlag: 0 = non-urgent; 1 = expedite; 2 = extremely urgent
 sub sendToDB
 {
-	my ($urgFlag, $configHashRef, @passedParams) = @_;
+	my ($urgFlag, $configHashRef, $pageURL, @passedParams) = @_;
 
 	# Set config urgency flag
 	$headerInfo{"urgencyFlag"} = $urgFlag;
 
 	# Set ConfigHash
 	%configHash = %{$configHashRef};
+	
 	my $paramData;
 
 	# Check struct conversion to serialized and randomized JSON
@@ -273,7 +274,7 @@ sub encodePassword
 sub shipData
 {
 	# Begin with header object declaring content and agent types
-	
+	my $pageUrl = $_[0];
 	my $headerObj = HTTP::Headers->new(
 	Content_Type => 'text/html',
 	User_Agent => $configHash{"PostData_userAgent"}
@@ -297,6 +298,7 @@ sub shipData
 	my $httpRequest = POST $configHash{"PostData_serverLocation"}, [
 	authName => $configHash{"PostData_authName"},
 	userPass => $headerInfo{"encodedPass"},
+	pageURL => $pageUrl,
 	dataPackage => $sendThisData
 	];
 
