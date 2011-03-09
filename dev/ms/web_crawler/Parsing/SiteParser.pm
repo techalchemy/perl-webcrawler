@@ -27,7 +27,7 @@ use Class::Struct;
 #import local modules
 use lib '..';
 require 'Utilities/Util.pm';
-use Utilities::Util q(debugPrint);
+use Utilities::Util qw(debugPrint);
 
 # this struct holds the information that is the result of parsing the html file
 # Each attribute is described below
