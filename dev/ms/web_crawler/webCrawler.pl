@@ -13,11 +13,28 @@
 #	
 # TASKS FOR THIS THING
 # TODO: remove excess code
-# TODO: documentation
+# TODO: documentation in natural docs format?
 # TODO: build domain graph
 #			discuss issues and run experiment
-#	
-#
+# TODO: change the structure of this project. add some organization via different
+#		file structure etc.
+# TODO: Incorporate calls to PostData
+# 			Including Post Processing Results. See Below.
+# TODO: add post processing routines
+# TODO: add updating running statistics
+#			for performance and web based
+# TODO: LARGE GOAL
+#			Change how the threading model works
+#			Boss and Worker threads
+#				Amdahl's law considerations, job queue add and remove
+#				requests at the entry and exit of processPage are likely
+#				the main component of the serial code runtime. With this
+#				in mind the execution of this script will change to
+#				a more scalable tree based implementation eventually.
+#				as for now, a boss worker thread model should be the next step 
+#			Tree based implementation
+#				current idea is a hierarchy of crawlers that can send signals
+#				back and forth to share data 
 #																				 
 ######################################################################################
 
@@ -40,13 +57,13 @@ struct(PAGE_RECORD => {url => '$',
 					   timestamp => '$',
 					   linkDepth => '$',
 					  });
+
 # get local modules
 require 'SiteParser.pm';
 use SiteParser;
 require 'Util.pm';
-use Util;
+use Util qw(debugPrint);
 
-# This will be used to access the configuration parameters specificied in file
 my %options;
 
 print "starting webCrawler.pl...\n";
@@ -79,37 +96,54 @@ sub main
 	
 	#initialize the job queue
 	my $pendingJobs = new Thread::Queue;
-	my $threadState = &share({});
+
+	#this is a shared hash that will be used to keep track of which pages
+	#have already been visited.
+	#	TODO: adding another object that needs to be accessed serially could
+	#		  start to limit the scalability of the system. Is there some way
+	#		  we can speed this up?
+	my $visitedPages = &share({});
+	#these accumulators are used to track the program
+	my $predictedAccumulator : shared;
+	#my $predictedAccumulatorRef = &share($predictedAccumulatorRef);
+	my $processedAccumulator : shared;
+	#&share($processedAccumulatorRef);
+	$predictedAccumulator = 0;
+	$processedAccumulator = 0;
 	#share(@pendingJobs);
-	#TODO figure out how to pass the jobs
+
 	my @seedRecords = buildPageRecords(0, @seeds);
 	
-	Util::debugPrint ( 'seeds added to job queue ');
+	
 	#initialize the threads
 	Util::debugPrint ( 'initializing threads and starting crawl' );
 	for (my $index; $index < $options{'numWorkers'}; $index++)
 	{
 		Util::debugPrint ("creating thread #" . int($index) );
-		threads->create(\&workerThread, $pendingJobs, $threadState);
+		push(@threadPool, threads->create(\&workerThread, $pendingJobs, $visitedPages, 
+				\$predictedAccumulator, \$processedAccumulator));
 	}
 	
 	#add jobs to queue
-	addJobsToQueue(\@seedRecords, $pendingJobs);
-	my $threadResults;
-	while (threads->list(threads::running))
+	addJobsToQueue(\@seedRecords, $pendingJobs, \$predictedAccumulator);
+	Util::debugPrint ( 'seeds added to job queue ');
+	my $threadResults = {};
+	foreach(@threadPool)
 	{
-		foreach (threads->list(threads::joinable))
-		{
-			$threadResults{$_->tid()} = $_->join();
-		}
+		$threadResults->{$_->tid()} = $_->join();
 	}
+	Util::debugPrint ( 'crawling finished, beginning post processing');
 	
+	return 1;
 }
 
 sub addJobsToQueue
 {
 	my @pageRecords = @{$_[0]};
 	my $jobs = $_[1];
+	my $discoveredJobsAccumulator = $_[2];
+	$$discoveredJobsAccumulator += scalar(@pageRecords);
+	Util::debugPrint($$discoveredJobsAccumulator . ' total jobs assigned');
 	foreach(@pageRecords)
 	{
 		$jobs->enqueue($_);
@@ -168,9 +202,7 @@ sub getCurrentTimeString
 sub processPage
 {
 	#obtain the page record
-	my $pageRecord = shift;
-	#obtain reference to job queue
-	my $pendingJobs = shift;
+	my ($pageRecord, $pendingJobs, $visitedPages, $predictedAccumulatorRef, $graphCrawler) = @_;
 	#grab the site contents
 	my $siteContents = get ($pageRecord->{url});
 	#parse the page
@@ -180,20 +212,47 @@ sub processPage
 	
 	#prune the links here
 	my @currentPageLinks = @{$parsedPage->links};
-	my @prunedPageLinks = pruneLinks(currentPageLinks);
+	my @prunedPageLinks = pruneLinks(@currentPageLinks);
+	my $numLinksPruned = scalar(@currentPageLinks) - scalar(@prunedPageLinks);
+	Util::debugPrint('pruned ' . $numLinksPruned . ' links');
+	
+	#update the during crawl statistics
+	addPageToGraph($graphCrawler, $pageRecord->{'url'}, $parsedPage->links);
 	#add the links to the queue
 	my @resultPageRecords = ();
 	my $currentLinkDepth = $pageRecord->{linkDepth};
-	if ($currentLinkDepth + 1 < $options{'linkDepth'})
+	if (int($currentLinkDepth) < int($options{'linkDepth'}))
 	{
 		Util::debugPrint(" building records");
-		@resultPageRecords = buildPageRecords($currentLinkDepth++, @prunedPageLinks);
+		#increase the predicted jobs accumulator
+		@resultPageRecords = buildPageRecords($currentLinkDepth + 1, @prunedPageLinks);
 	}
 	else
 	{
-		Util::debugPrint(' link depth limit reached');
+		Util::debugPrint(' link depth limit reached ');
 	}
-	addJobsToQueue(\@resultPageRecords, $pendingJobs);
+	addJobsToQueue(\@resultPageRecords, $pendingJobs, $predictedAccumulatorRef);
+}
+
+sub addPageToGraph
+{
+	my ($graphCrawler, $url, @links) = @_;
+	my $domainName = extractDomainName($url);
+	Util::debugPrint('domain name extracted: ' . $domainName);
+	if (exists $domainEncountered->{$domain})
+	{
+		
+	}
+	else
+	{
+		
+	}
+}
+
+sub extractDomainName
+{
+	my $url = @_;
+	my $domain;
 }
 
 sub pruneLinks
@@ -202,7 +261,7 @@ sub pruneLinks
 	my @prunedList;
 	foreach(@links)
 	{
-		if (/http:\/\/www./)
+		if (/^http:\/\//)
 		{
 			push(@prunedList, $_);
 		}
@@ -210,55 +269,21 @@ sub pruneLinks
 	return @prunedList;
 }
 
-# FIXME: this isn't coded properly. program will never stop
 sub workerThread
 {
-	my $pendingJobs = $_[0];
+	my ($pendingJobs, $visitedPages, $predictedAccumulatorRef, $processedAccumulatorRef) = @_;
+	my $crawlGraph = \{};
 	while (my $newJob = $pendingJobs->dequeue())
 	{
-		processPage($newJob, $pendingJobs);
+		$$processedAccumulatorRef++; 
+		Util::debugPrint( 'total jobs processed ' . $$processedAccumulatorRef );
+		processPage($newJob, $pendingJobs, $visitedPages, $predictedAccumulatorRef, $crawlGraph);
+		if ($$predictedAccumulatorRef == $$processedAccumulatorRef)
+		{
+			last;
+		}
+		threads->yield();
 	}
-#	my $pendingJobs = $_[0];
-#	my $threadState = $_[1];
-#	Util::debugPrint('execution started');
-#	$threadState->{threads->tid()} = 'RUNNING';
-#	my $isRunning = 1;
-#	my $firstJob = $pendingJobs->dequeue();
-#	Util::debugPrint('first job received');
-#	processPage($newJob, $pendingJobs);
-#	
-#	while ($isRunning)
-#	{
-#		my $currentJob = $pendingJobs->dequeue_nb();
-#		if ($currentJob == undef)
-#		{
-#			Util::debugPrint('going into wait mode');
-#			$threadState->{threads->tid()} = 'WAITING';
-#			threads->yield();
-#		}
-#		else
-#		{
-#			Util::debugPrint('going into run mode');
-#			$threadState->{threads->tid()} = 'RUNNING';
-#			processPage($currentJob, $pendingJobs);
-#		}
-#		if ($currentJob == undef)
-#		{
-#			my $foundARunner = 0;
-#			while (my ($key, $value) = each %{$threadState})
-#			{
-#				if ($key eq 'RUNNING')
-#				{
-#					$foundARunner = 1;
-#				}
-#			}
-#			if (!($foundARunner))
-#			{
-#				$isRunning = 0;
-#			}
-#		}
-#	}
-	
-	
 	Util::debugPrint('finished');
+	return $crawlGraph;
 }

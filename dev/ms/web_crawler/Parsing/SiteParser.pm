@@ -150,12 +150,12 @@ sub tagHandler
 # FIXME this isn't working at all. serious issue.
 sub textHandler
 {
-	#my @text = @{@_};
-	#print "text encountered: " . join(" ", @{$textRef}) . "\n";
-	#if (!($inside{'script'}) && $inside{'body'})
-	#{
-	#	$workingPageStruct->bodyText($workingPageStruct->bodyText . join(" ", @text));
-	#}
+#	foreach(@_)
+#	{
+#		$_ =~ s/\s//g;
+#	}
+	chomp();
+	$workingPageStruct->bodyText($workingPageStruct->bodyText . " " . @_);
 }
 
 sub endHandler
