@@ -1,0 +1,47 @@
+WebCrawler:
+Run from command line w/ ConfigFile location as param (configuration_files/testConfigFile.cfg)
+Crawls links to depth n; for each page returning:
+	1) PARSED_PAGE struct (actually a hashref) -> title, author, links, charset, keywords, description, bodytext
+
+POSTDATA:
+Expects to receive --
+1) Function call to PostData::setConfigValues(CONFIGHASH REF);
+2) Function call to PostData::sendToDB(UrgFlag, data1(struct/hash/array/scalar/ref*), data2......datan);
+
+Needs ConfigHash with:
+PostData_userAgent=agent
+PostData_authName=username
+PostData_userPass=Password
+PostData_serverLocation=server
+
+What it does:
+Takes data of any type and converts it to JSON, serializes it, injects a random string at a random position, and HTTP POST's the data to the DBHANDLER
+
+Format:
+	Passed in HEADERS:
+		UserAgent from config file (User_Agent)
+		JSON sequential order of transfer start value bits (from array) (transportReplaceStart)
+		JSON sequential order of injected string length (from array) (transportReplaceLen)
+		Password salt value (passEncodeKey)
+		Urgency Flag (urgencyFlag)
+	
+	Passed via HTTP POST to serverLocation from Config:
+		Authenticating Username (authName)
+		Encrypted password (userPass)
+		pageURL
+		JSON sequential order of randomized, serialized, JSON former data structures (dataPackage)
+		
+dbhandler.php
+
+What it does:
+authenticate: User_Agent from headers, passEncodeKey from headers, authName / userPass from form post
+	After this, set authFlag to 1 (in returnArray)
+Does authentication on the requesting client.  If the client is authenticated, then:
+	1) Remove the random shit from the serialized data
+	2) Look at urgency before passing info along
+	3) Break info down for table // title, author, links, charset, keywords, description, bodytext
+		a) Unserialize 
+		b) Construct MYSQL query to post this info -- extract pageURL as key, values = title, author, keywords, charset, description, links, bodytext(blob?)
+		c) Another MySQL query to keep track of linking (make 1 table per site?)
+	4) return a serialized, encoded array of 1, 1 on success 
+	
