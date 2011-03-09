@@ -37,11 +37,15 @@ use strict;
 use Util;
 use PHP::Serialization qw(serialize unserialize);
 use JSON::XS;
-use LWP::userAgent;
+use LWP::UserAgent;
 use Digest::SHA qw(sha256);
 
 # Define static variables
 my $encodedData;
+my @replaceStartVals;
+my @replaceLenVals;
+my @replaceStrings;
+my @formData;
 
 # CONFIG DATA WE NEED: PostData_userAgent, PostData_authName, PostData_userPass, serverLocation, urgencyFlag, 
 my %configHash = {
@@ -51,16 +55,13 @@ my %configHash = {
 	"PostData_serverLocation" => 'localhost'
 };
 my %headerInfo = {
-	"transportReplaceStart", 0,
-	"transportReplaceLen", 0,
-	"transportReplaceVal", 0,
+	"replaceStart", \@replaceStartVals,
+	"replaceLen", \@replaceLenVals,
+	"replaceVal", \@replaceStrings,
 	"urgencyFlag", 0,
 	"encodedPass", 'blank',
 	"passEncodeKey", 'blank'
 };
-my %hashedStruct = {
-};
-
 sub setConfigValues
 {
 	%configHash = %{$_[0]};
@@ -73,19 +74,19 @@ sub sendToDB
 	my ($urgFlag, @passedParams) = @_;
 	# Set config urgency flag
 	$headerInfo{"urgencyFlag"} = $urgFlag;
+	my $paramData;
 	# Check struct conversion to serialized and randomized JSON
-	#foreach(@passdParams) 
-	#{
-#		
-	#}
-	if (convertFromStruct($_[1]))
+	foreach $paramData (@passedParams) 
 	{
-		print "Struct object successfully converted\n";
-	}
-	else 
-	{
-		print "Struct object conversion failure\n";
-		return 0;
+		if (convertToJson($paramData)) 
+		{
+			Util::debugPrint("Converting Data to JSON: Success");
+		}
+		else
+		{
+			Util::debugPrint("FAILURE: Converting data to JSON");
+			return 0;
+		}	
 	}
 	# Check password encoding & rewrite to hash table as encodedPass
 	if (encodePassword())
@@ -110,12 +111,50 @@ sub sendToDB
 	}
 		
 }
-sub convertFromStruct 
+sub convertToJson
 {
-	# Typecast the struct data into a hash table
-	%hashedStruct = %{$_[0]};
-	# Convert hash table to JSON
-	my $jsonStruct = json_encode(%hashedStruct);
+	# Determine what type of data we are dealing with
+	my $initialData = $_[0];
+	my $jsonStruct = undef;
+	if ($initialData =~ m/^HASH/) 
+	{
+		# Typecast the hash ref into a hash table
+		my %hashedStruct = %{$initialData};
+		# Convert hash table to JSON
+		$jsonStruct = json_encode(%hashedStruct);
+	}
+	elsif ($initialData =~ m/^ARRAY/)
+	{
+		# Typecast the array ref into an array
+		my @arrayStruct = @{$initialData};
+		# Convert hash table to JSON
+		$jsonStruct = json_encode(@arrayStruct);		
+	}
+	elsif ($initialData =~ m/^SCALAR/)
+	{
+		# Typecast the scalar appropriately
+		my $scalarStruct = $$initialData;
+		# Convert hash table to JSON
+		$jsonStruct = json_encode($scalarStruct);
+	}
+	# IF ITS A REF TO A REF ???
+	elsif ($initialData =~ m/^REF/)
+	{
+		#DeReference and ReCall this function
+		my $dereferencedRef = \$initialData;
+		convertToJson($dereferencedRef);		
+	}
+	# If it's an object ref
+	elsif ($initialData =~ m/^\w+\=/)
+	{
+		# Pass the data type reference back to this function
+		$initialData =~ s/^\w+\=//;
+		convertToJson($initialData);
+	}
+	else 
+	{
+		$jsonStruct = json_encode($initialData);
+	}
 	# Error checking
 	if ($jsonStruct)
 	{
@@ -157,18 +196,21 @@ sub insertRandomString
 	# Count the length of the value
 	my $stringLengthTotal = length($decodedStringVal);
 	# Determine start bit for random num insertion (casts start as random val b/w 0-stringLen)
-	$headerInfo{"transportReplaceStart"} = int(rand($stringLengthTotal));
+	my $startBitVal = int(rand($stringLengthTotal));
+	push(@replaceStartVals, $startBitVal);
 	# Determine random number & length of random string to insert & store in hash
-	$headerInfo{"transportReplaceVal"} = int(rand(99999999999999999999999999999999999));
-	$headerInfo{"transportReplaceLen"} = length($headerInfo{"transportReplaceVal"});
+	my $replaceStringVal = int(rand(99999999999999999999999999999999999));
+	push(@replaceStrings, $replaceStringVal);
+	my $insertedLength = length($replaceStringVal);
+	push(@replaceLenVals, $insertedLength);
 	# Insert the generated value into the initial string (make functional)
 	# First, split the binary scalar into the first and last sections
-	my $lastSubstrBit = $headerInfo{"transportReplaceStart"}+1;
-	my $finalDataFirst = substr($decodedStringVal, 0, $headerInfo{"transportReplaceStart"});
+	my $lastSubstrBit = $startBitVal+1;
+	my $finalDataFirst = substr($decodedStringVal, 0, $startBitVal);
 	my $finalDataLast = substr($decodedStringVal, $lastSubstrBit);
 	# Then, insert the new data in to the serial data
-	my $finalSerialData = $finalDataFirst . $headerInfo{"transportReplaceVal"} . $finalDataLast;
-	$encodedData = $finalSerialData;
+	my $finalSerialData = $finalDataFirst . $replaceStringVal . $finalDataLast;
+	push(@formData, $finalSerialData);
 	return 1;
 }
 sub encodePassword
@@ -199,23 +241,27 @@ sub shipData
 	User_Agent => $configHash{"PostData_userAgent"}
 	);
 	# Pass header object encoding metadata
+	# build header w/ foreach loop on header data (json encode)
+	my $transStartInfo = json_encode(@replaceStartVals);
+	my $transLenInfo = json_encode(@replaceLenVals);
 	$headerObj->header(
-	-transportReplaceStart => $headerInfo{"transportReplaceStart"},
-	-transportReplaceLen => $headerInfo{"transportReplaceLen"},
+	-transportReplaceStart => $transStartInfo,
+	-transportReplaceLen => $transLenInfo,
 	-passEncodeKey => $headerInfo{"passEncodeKey"},
 	-urgencyFlag => $headerInfo{"urgencyFlag"}
 	);
 	# NB: Submit via form: %configHash{"PostData_authName"}, %headerInfo{"encodedPass"}, $encodedData
 	# Instantiate Request Objet for Form post to server
 	# TODO Add form data
+	my $sendThisData = json_encode(@formData);
 	my $httpRequest = POST $configHash{"PostData_serverLocation"}, [
 	authName => $configHash{"PostData_authName"},
 	userPass => $headerInfo{"encodedPass"},
-	dataPackage => $encodedData
+	dataPackage => $sendThisData
 	];
 	# Instantiate new LWP PostData_userAgent object to submit form request
 	#TODO Make all of the commlink stuff declared in the instantiation
-	my $commLink = LWP::PostData_userAgent->new();
+	my $commLink = LWP::UserAgent->new();
 	$commLink->headers($headerObj);
 	$commLink->agent($configHash{"PostData_userAgent"});
 	# Read response for bit flag indicators
