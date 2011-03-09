@@ -60,10 +60,11 @@ struct(PAGE_RECORD => {url => '$',
 
 # get local modules
 require 'Parsing/SiteParser.pm';
-use Parsing::SiteParser;
 require 'Utilities/Util.pm';
+require 'Persistence/PostData.pm';
+use Parsing::SiteParser;
 use Utilities::Util qw(debugPrint);
-
+use Persistence::PostData qw(sendToDB);
 my %options;
 
 print "starting webCrawler.pl...\n";
@@ -198,7 +199,6 @@ sub getCurrentTimeString
 	return $day . "/" . $month . "/" . $year . " " . $hours . ":" . $minutes . ":" . $seconds;
 }
 
-
 sub processPage
 {
 	#obtain the page record
@@ -208,13 +208,25 @@ sub processPage
 	#parse the page
 	my $parsedPage = SiteParser::parseData($siteContents);
 	Util::debugPrint(' processing ' . $pageRecord->{url});
-	#output the page here
-	
 	#prune the links here
 	my @currentPageLinks = @{$parsedPage->links};
 	my @prunedPageLinks = pruneLinks(@currentPageLinks);
 	my $numLinksPruned = scalar(@currentPageLinks) - scalar(@prunedPageLinks);
 	Util::debugPrint('pruned ' . $numLinksPruned . ' links');
+	
+	# LINE ADDED FOR DAN --  I WANT PRUNED LINKS BACK FOR DB
+	$parsedPage->links->{@prunedPageLinks};
+	
+	#output the page here using sendToDB(urgency, confighashref, parsed page object, and whatever else you want)
+	Util::debugPrint('Sending Page to Output for DB');
+	if(sendToDB(0, \%options, $parsedPage))
+	{
+		debugPrint(1, 'SENT OUTPUT SUCCESSFULLY');
+	}
+	else
+	{
+		debugPrint(1, 'FAILED SENDING OUTPUT!');
+	}
 	
 	#update the during crawl statistics
 	addPageToGraph($graphCrawler, $pageRecord->{'url'}, $parsedPage->links);
