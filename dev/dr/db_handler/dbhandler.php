@@ -73,7 +73,7 @@ $postRequest = array(
 	"pageURL" => '',
 	"dataPackage" => '' //this is an array (is this json?)
 );
-$acceptedUA = array("
+$acceptedUA = array("");
 $acceptedAuthInfo = array(
 
 );
