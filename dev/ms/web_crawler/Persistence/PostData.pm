@@ -50,7 +50,7 @@ my @replaceLenVals;
 my @replaceStrings;
 my @formData;
 
-# CONFIG DATA WE NEED: PostData_userAgent, PostData_authName, PostData_userPass, serverLocation, urgencyFlag, 
+# CONFIG DATA WE NEED: PostData_userAgent, PostData_authName, PostData_userPass, serverLocation, urgencyFlag,
 my %configHash = {
 	"PostData_userAgent" => 'dataPoster',
 	"PostData_authName" => 0,
@@ -58,9 +58,9 @@ my %configHash = {
 	"PostData_serverLocation" => 'localhost'
 };
 my %headerInfo = {
-	"replaceStart", \@replaceStartVals,
-	"replaceLen", \@replaceLenVals,
-	"replaceVal", \@replaceStrings,
+	"replaceStart", @replaceStartVals,
+	"replaceLen", @replaceLenVals,
+	"replaceVal", @replaceStrings,
 	"urgencyFlag", 0,
 	"encodedPass", 'blank',
 	"passEncodeKey", 'blank'
@@ -78,13 +78,13 @@ sub sendToDB
 
 	# Set ConfigHash
 	%configHash = %{$configHashRef};
-	
+
 	my $paramData;
 
 	# Check struct conversion to serialized and randomized JSON
-	foreach $paramData (@passedParams) 
+	foreach $paramData (@passedParams)
 	{
-		if (convertToJson($paramData)) 
+		if (convertToJson($paramData))
 		{
 			debugPrint(1, "Converting Data to JSON: Success");
 		}
@@ -92,7 +92,7 @@ sub sendToDB
 		{
 			debugPrint(1, "FAILURE: Converting data to JSON");
 			return 0;
-		}	
+		}
 	}
 
 	# Check password encoding & rewrite to hash table as encodedPass
@@ -117,14 +117,14 @@ sub sendToDB
 		debugPrint(1, "Data Sending Failure");
 		return 0;
 	}
-		
+
 }
 sub convertToJson
 {
 	# Determine what type of data we are dealing with
 	my $initialData = $_[0];
 	my $jsonStruct = undef;
-	if ($initialData =~ m/^HASH/) 
+	if ($initialData =~ m/^HASH/)
 	{
 		# Typecast the hash ref into a hash table
 		my %hashedStruct = %{$initialData};
@@ -140,7 +140,7 @@ sub convertToJson
 
 		# Convert hash table to JSON
 		$jsonStruct = encode_json(@arrayStruct);
-		debugPrint(1, "FOUND DATA TYPE: ARRAYREF");		
+		debugPrint(1, "FOUND DATA TYPE: ARRAYREF");
 	}
 	elsif ($initialData =~ m/^SCALAR/)
 	{
@@ -157,7 +157,7 @@ sub convertToJson
 		#DeReference and ReCall this function
 		my $dereferencedRef = \$initialData;
 		debugPrint(1, "FOUND DATA TYPE: REF TO REF (RECALL FUNC)");
-		convertToJson($dereferencedRef);		
+		convertToJson($dereferencedRef);
 	}
 	# If it's an object ref
 	elsif ($initialData =~ m/^\w+\=/)
@@ -167,7 +167,7 @@ sub convertToJson
 		debugPrint(1, "FOUND DATA TYPE: OBJECT REF (RECALL FUNCTION)");
 		convertToJson($initialData);
 	}
-	else 
+	else
 	{
 		$jsonStruct = encode_json($initialData);
 	}
@@ -210,21 +210,21 @@ sub convertToJson
 	}
 }
 # Function to salt binary data
-sub insertRandomString 
+sub insertRandomString
 {
 	# Param: Serialized Value
 	my $decodedStringVal = $_[0];
 	debugPrint(1, "INITIAL SERIAL DATA: " . $decodedStringVal);
-	
+
 	# Count the length of the value
 	my $stringLengthTotal = length($decodedStringVal);
 	debugPrint(1, "SERIAL STRING LENGTH: " . $stringLengthTotal);
-	
+
 	# Determine start bit for random num insertion (casts start as random val b/w 0-stringLen)
 	my $startBitVal = int(rand($stringLengthTotal));
 	debugPrint(1, "SERIAL STARTING BIT: " . $startBitVal);
 	push(@replaceStartVals, $startBitVal);
-	
+
 	# Determine random number & length of random string to insert & store in hash
 	my $totalNums = 99999999999999999999999999999999999;
 	my $replaceStringVal = int(rand($totalNums));
@@ -232,13 +232,13 @@ sub insertRandomString
 	push(@replaceStrings, $replaceStringVal);
 	my $insertedLength = length($replaceStringVal);
 	push(@replaceLenVals, $insertedLength);
-	
+
 	# Insert the generated value into the initial string (make functional)
 	# First, split the binary scalar into the first and last sections
 	my $lastSubstrBit = $startBitVal+1;
 	my $finalDataFirst = substr($decodedStringVal, 0, $startBitVal);
 	my $finalDataLast = substr($decodedStringVal, $lastSubstrBit);
-	
+
 	# Then, insert the new data in to the serial data
 	my $finalSerialData = $finalDataFirst . $replaceStringVal . $finalDataLast;
 	debugPrint(1, "FINAL SERIAL DATA: " . $finalSerialData);
@@ -248,19 +248,19 @@ sub insertRandomString
 sub encodePassword
 {
 	my $decodedPassText = $configHash{"PostData_userPass"};
-	
+
 	# generate encryption salt (this string is 30 concatenated ascii characters)
 	my $saltVal = eval sprintf q[(%s)], join q[ . ] => ('chr(int(rand(92))+33)') x 30;
 	debugPrint(1, "PASSWORD SALT: " . $saltVal);
-	
+
 	# Salt the password with the string
 	my $saltedPass = $saltVal . $decodedPassText;
-	
+
 	# SHA-2 encryption for SALT
 	my $encodedPass = sha256($saltedPass);
 	debugPrint(1, "ENCRYPTED PASS: " . $encodedPass);
-	
-	# Set the header values with the salt string and the encrypted password 
+
+	# Set the header values with the salt string and the encrypted password
 	$headerInfo{"encodedPass"} = $encodedPass;
 	$headerInfo{"passEncodeKey"} = $saltVal;
 	return 1;
@@ -279,7 +279,7 @@ sub shipData
 	Content_Type => 'text/html',
 	User_Agent => $configHash{"PostData_userAgent"}
 	);
-	
+
 	# Pass header object encoding metadata
 	# build header w/ foreach loop on header data (json encode)
 	my $transStartInfo = encode_json(@replaceStartVals);
@@ -292,7 +292,7 @@ sub shipData
 	-passEncodeKey => $headerInfo{"passEncodeKey"},
 	-urgencyFlag => $headerInfo{"urgencyFlag"}
 	);
-	
+
 	my $sendThisData = encode_json(@formData);
 	debugPrint(1, "FORM DATA: " . $sendThisData);
 	my $httpRequest = POST $configHash{"PostData_serverLocation"}, [
@@ -313,8 +313,7 @@ sub shipData
 	my $httpData = $httpResponse->content;
 
 	# Unserialize response data and decode_json it into an array
-	my $responseJson = unserialize $httpResponse;
-	my @responseArray = decode_json $responseJson;
+	my @responseArray = decode_json $httpResponse;
 
 	# Check if the operation succeeded
 	my $responseString;
