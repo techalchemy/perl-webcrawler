@@ -246,27 +246,6 @@ sub processPage
 	addJobsToQueue(\@resultPageRecords, $pendingJobs, $predictedAccumulatorRef);
 }
 
-sub addPageToGraph
-{
-	my ($graphCrawler, $url, @links) = @_;
-	my $domainName = extractDomainName($url);
-	Util::debugPrint('domain name extracted: ' . $domainName);
-	if (exists $domainEncountered->{$domain})
-	{
-		
-	}
-	else
-	{
-		
-	}
-}
-
-sub extractDomainName
-{
-	my $url = @_;
-	my $domain;
-}
-
 sub pruneLinks
 {
 	my @links = @_;
