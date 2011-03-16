@@ -29,11 +29,11 @@ sub update
 {
 	my ($self, $url, $links) = @_;
 	# add the current page and its links to the crawl graph
-	addPageToGraph($self, $url, @{$links});
-	updateThroughput($self);
+	_addPageToGraph($self, $url, @{$links});
+	_updateThroughput($self);
 }
 
-sub updateThroughput
+sub _updateThroughput
 {
 	my $self = shift;
 	# update the throughput
@@ -55,7 +55,12 @@ sub updateThroughput
 	$self->{JOBS_PROCESSED_ACCUMULATOR}++;
 	$self->{TOTAL_JOBS_PROCESSED}++;
 	# see if time of sample has elapsed
-	if ($currentTime - $lastSampleTime > $self->{SAMPLE_RATE})
+	# since an instance of this object is only one of many
+	# and will need to aligned with others, we need to account
+	# for the possibility that multiple sample lengths could
+	# have elapsed since the last sampling
+	my $samplesMissed = ($currentTime - $self->{LAST_SAMPLE_TIME}) / $self->{SAMPLE_RATE};
+	if ($samplesMissed >= 1)
 	{
 		# add the jobs processed over interval
 		# to the samples array
@@ -63,11 +68,16 @@ sub updateThroughput
 		# reset accumulator
 		$self->{JOBS_PROCESSED_ACCUMULATOR} = 0;
 		# update the last sample time field
+		my $leftToPush = int($samplesMissed - 1);
+		while ($leftToPush > 0)
+		{
+			push (@{$self->THROUGHPUT_SAMPLES}, 0);
+		}
 		$self->{LAST_SAMPLE_TIME} = $currentTime;
 	}
 }
 
-sub addPageToGraph
+sub _addPageToGraph
 {
 	my ($self, $url, @links) = @_;
 	my $domainName = extractDomainName($url);
@@ -84,7 +94,10 @@ sub extractDomainName
 {
 	foreach(@_)
 	{
-		$_ =~ s/(http:\/\/|www\.)//g;
+		my $temp = $_;
+		$temp =~ s/(http:\/\/|www\.)//g;
+		$temp =~ s/\/.*$//g;
+		$_ = $temp;
 	}
 }
 
@@ -95,6 +108,39 @@ sub _getTime
 	return ($seconds * 10**6) + $microseconds;
 }
 
+
+# set and get accessor methods
+
+
+sub getSampleRate
+{
+	return $_[0]->{SAMPLE_RATE};
+}
+
+sub getSampleStartTime
+{
+	return $_[0]->{SAMPLE_START_TIME};
+}
+
+sub getThroughputSamples
+{
+	return $_[0]->{THROUGHPUT_SAMPLES};
+}
+
+sub getTotalJobsProcessed
+{
+	return $_[0]->{TOTAL_JOBS_PROCESSED};
+}
+
+sub getCrawlGraph
+{
+	return $_[0]->{CRAWL_GRAPH};
+}
+
+sub getNumberOfSamples
+{
+	return scalar(@{$_[0]->{THROUGHPUT_SAMPLES}});
+}
 
 
 1;
