@@ -14,6 +14,7 @@ sub new
 	$self->{SAMPLE_RATE} = 0;
 	$self->{CRAWL_GRAPH} = {};
 	$self->{THROUGHPUT_SAMPLES} = [];
+	$self->{SAMPLE_START_TIME} = 0;
 	bless $self, 'CrawlStatisticsAggregator';
 	return $self;
 }
@@ -21,43 +22,61 @@ sub new
 sub setSampleRate
 {
 	#account for using micro second timer
-	$_[0]->{SAMPLE_RATE} = $_[1] / TIMER_UNITS_PER_MILLISECOND;
+	$_[0]->{SAMPLE_RATE} = $_[1] * TIMER_UNITS_PER_MILLISECOND;
 }
 
 sub update
 {
-	my ($self, $crawlGraph, $url, $links) = @_;
+	my ($self, $url, $links) = @_;
 	# add the current page and its links to the crawl graph
-	addPageToGraph($crawlGraph, $url, @{$links});
+	addPageToGraph($self, $url, @{$links});
+	updateThroughput($self);
+}
+
+sub updateThroughput
+{
+	my $self = shift;
 	# update the throughput
-	my ($throwAway, $currentTime) = gettimeofday;
+	#get the current time
+	my $currentTime = _getTime();
+	#find the last sample time
 	my $lastSampleTime = $self->{LAST_SAMPLE_TIME};
+	#if the last sample time is 0, it means this is the first time
+	#update has been called
+	# for postProcessing purposes, multiple instances of this object
+	# will need to be aligned to plot the overall throughput
+	# this is done by having a SAMPLE_START_TIME that holds the
+	# time that this instance started sampling
 	if ($lastSampleTime == 0)
 	{
-		$self->{THROUGHPUT_SAMPLES} = gettimeofday;
+		$self->{SAMPLE_START_TIME} = _getTime();
 	}
+	# Add to the processed job counter and the accumulator
 	$self->{JOBS_PROCESSED_ACCUMULATOR}++;
+	$self->{TOTAL_JOBS_PROCESSED}++;
+	# see if time of sample has elapsed
 	if ($currentTime - $lastSampleTime > $self->{SAMPLE_RATE})
 	{
+		# add the jobs processed over interval
+		# to the samples array
 		push(@{$self->{THROUGHPUT_SAMPLES}}, $self->{JOBS_PROCESSED_ACCUMULATOR});
+		# reset accumulator
 		$self->{JOBS_PROCESSED_ACCUMULATOR} = 0;
+		# update the last sample time field
 		$self->{LAST_SAMPLE_TIME} = $currentTime;
 	}
 }
 
 sub addPageToGraph
 {
-	my ($graphCrawler, $url, @links) = @_;
+	my ($self, $url, @links) = @_;
 	my $domainName = extractDomainName($url);
 	Util::debugPrint('domain name extracted: ' . $domainName);
-	my $outgoingLinks = $domainEncountered->{$domainName};
-	if (!exists $outgoingLinks)
-	{
-		$outgoingLinks = {};	
-	}
+	my $outgoingLinks = $self->{CRAWL_GRAPH}->{$domainName};
 	foreach(@links)
 	{
-		$outgoingLinks->{$_}++;
+		my $currentLinkDomain = extractDomainName($_);
+		$outgoingLinks->{$currentLinkDomain}++;
 	}
 }
 
@@ -67,6 +86,13 @@ sub extractDomainName
 	{
 		$_ =~ s/(http:\/\/|www\.)//g;
 	}
+}
+
+#returns the time in microseconds
+sub _getTime
+{
+	my ($seconds, $microseconds) = gettimeofday;
+	return ($seconds * 10**6) + $microseconds;
 }
 
 
