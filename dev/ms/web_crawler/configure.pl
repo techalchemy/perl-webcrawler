@@ -1,31 +1,45 @@
-# Currently just a placeholder. dumping grounds for suspected relevant information
+#
+#	This script should be run with a fresh install of perl and will recursively install the dependencies used by this project
+#		Currently requires root permission for cpan installs
+#		TODO: make cpan not ask stupid fucking questions about dependencies
+#
+#
+#		Arguments:
+#			filename - name of the file to install dependencies for (webCrawler.pl for example)
+#
+#
+print "Starting configure.pl...\n";
+BEGIN { system('cpan -i Module::ExtractUse');};
 
-# Getting machine information
-#	Sys::Info::Device::CPU
-#		bitness
-#		count
-#		load (1 min)
-#		speed (mhz)
-#		identity
-#		cache
-#		cache_timeout
-#		hyperthreading
-#		num threads if ht is enabled
-#	Linux::SysInfo
-#		uptime
-#		load 1, 5, 15
-#		total ram
-#		free ram
-#		shared ram
-#		buffered ram
-#		total swap
-#		free swap
-#		procs
-#		mem_unit (size of mem_unit in bytes?)
-#
-##################################
-# Making Directory structure of code unnoticeable by modules and scripts
-#	Pseudocode
-#		recursively enumerate directories contained in web_crawler directory
-#		add all of these to @INC
-#
+use Module::ExtractUse;
+
+
+installDependencies($ARGV[0]);
+
+print "Finished running configure.pl\n";
+
+
+sub installDependencies
+{
+	my $fileToCheck = $_[0];
+	my $p = Module::ExtractUse->new;
+	
+	$p->extract_use($fileToCheck);
+	
+	my @usedModules = $p->array;
+	foreach(@usedModules)
+	{
+		
+		#check if the current dependency is a local module, if it is we need to grab its dependencies
+		my $speculativeModulePath = join("\/", split(/::/)) . ".pm";
+		if (-e $speculativeModulePath)
+		{
+			#if here, means we got a local module. we should grab this module's dependencies as well
+			installDependencies($speculativeModulePath);
+		}
+		else
+		{
+			system('cpan -y -i ' . $_);
+		}
+	}
+}
