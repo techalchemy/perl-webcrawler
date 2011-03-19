@@ -1,8 +1,9 @@
 use threads;
 
 package Util;
+require Exporter;
 use Exporter 'import'; # gives you Exporter's import() method directly
-@EXPORT_OK = qw(debugPrint); # symbols to export on request
+@EXPORT_OK = qw(&debugPrint); # symbols to export on request
 
 ######################################################################################
 # DEBUGGING static variables	
@@ -56,13 +57,12 @@ sub debugPrint
 	# Determine where the debug is coming from
 	my $callingModule = caller();
 	# If the first parameter is '1', enable caller-based file organization for debugging
-	if ($_data[0] == 1) { 
-		my $debugFile = $callingModule . ".dbg";
+	my $debugFile = $globalDebugFile;
+	if ($data[0] == 1) { 
+		$debugFile = $callingModule . ".dbg";
 		pop @data;
 	 }
-	 # Otherwise use the normal global debug file
-	else { my $debugFile = $globalDebugFile; }
-	$callingModule . ": " . $data;
+	
 	open (OUTPUT_FILE, ">>", $debugFile);
 	print OUTPUT_FILE $callingModule;
 	if ($recordThreadFlag)
