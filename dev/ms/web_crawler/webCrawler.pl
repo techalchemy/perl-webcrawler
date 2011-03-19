@@ -10,6 +10,21 @@
 #	- seedFilename the name of the file containing the seeds to start the crawler with
 #	- numWorkers number of worker threads the crawler should create
 #	- linkDepth the maximum link depth the crawler should crawl to (seeds are considered to have a link depth of 0)
+#	- verbosity the level of verbosity wanted with debug statements. currently three levels of debugging are used by this script
+#		# this is the lowest level of verbosity that only prints general information about what the script is doing
+#		# this level of verbosity will go more in depth and print function calls and return values
+#		# this is the highest level of verbosity and will print a debug line for almost every line of code executed
+#	- throughputSampleRate the time in seconds between throughput samples
+
+# TODO: remaining crawler tasks
+# 1). Clean up the code
+#	  - split large function definitions into multiple functions
+#	  - change documentation to use perl doxygen specification
+# 2). Improve debug printing functionality
+#	  - implement verbosity levels for different debug statements
+#	  - look into conditional code inclusion (debug and release modes)
+# 3). Add the statistics aggregation and post processing output
+# 4). Move threading code to external module
 
 # check for threading enabled
 my $can_use_threads = eval 'use threads; 1';
@@ -18,29 +33,39 @@ if (!($can_use_threads))
 	print "please run again with threads enabled\n";
 	exit();
 }
-# get CPAN modules
+# CPAN modules used by this script
 use threads ('stringify');
 use threads::shared;
 use Thread::Queue;
 use LWP::Simple;
 use Class::Struct;
+use Cwd;
+# Local modules used by this script;
+use Parsing::SiteParser;
+use Utilities::Util qw(debugPrint);
+use Persistence::PostData qw(sendToDB);
+use PostProcessing::CrawlStatisticsAggregator;
+
 #declare structs used by crawler
 struct(PAGE_RECORD => {url => '$',
 					   timestamp => '$',
 					   linkDepth => '$',
 					  });
 
-# get local modules
-require 'Parsing/SiteParser.pm';
-require 'Utilities/Util.pm';
-require 'Persistence/PostData.pm';
-require 'PostProcessing/CrawlStatisticsAggregator.pm';
-use Parsing::SiteParser;
-use Utilities::Util qw(debugPrint);
-use Persistence::PostData qw(sendToDB);
-use PostProcessing::CrawlStatisticsAggregator qw(update);
-my %options;
+## @var options
+# this is a hash that will store the options specified by the supplied configuration file
+my %options = {
+	'useDebugMode' => 0,
+	'debugFile' => 'output.dbg',
+	'seedFilename' => 'seeds.txt',
+	'numWorkers' => 4,
+	'linkDepth' => 3,
+	'verbosity' => 1,
+	'throughputSampleRate' => 60
+};
 
+
+# script starts executing here
 print "starting webCrawler.pl...\n";
 main();
 print "finished running webCrawler.pl\n";
@@ -53,11 +78,14 @@ sub main
 	# obtain the configuration parameters
 	# assumes config file path is first parameter
 	# grab config file path
-	my $configFilePath = $ARGV[0];
+	my $configFilePath = retrieveAndVerifyConfigurationFilePath();
+	
+	
 	
 	# load config params into %options
 	loadConfigurationFile($configFilePath);
 	Util::debugPrint( "configuration file loaded" );
+	
 	
 	#load the seeds file
 	my @seeds = getSeeds();
@@ -66,16 +94,10 @@ sub main
 	#initialize the job queue
 	my $pendingJobs = new Thread::Queue;
 
-	#this is a shared hash that will be used to keep track of which pages
-	#have already been visited.
-	#	TODO: adding another object that needs to be accessed serially could
-	#		  start to limit the scalability of the system. Is there some way
-	#		  we can speed this up?
 	my $visitedPages = &share({});
 	#these accumulators are used to track the program
 	my $predictedAccumulator : shared;
 	my $processedAccumulator : shared;
-	#&share($processedAccumulatorRef);
 	$predictedAccumulator = 0;
 	$processedAccumulator = 0;
 
@@ -86,18 +108,69 @@ sub main
 	my @threadPool = initializeThreads($pendingJobs, $visitedPages, \$predictedAccumulator, \$processedAccumulator);
 	Util::debugPrint ( 'initializing threads and starting crawl' );
 	
-	
 	#add jobs to queue
 	addJobsToQueue(\@seedRecords, $pendingJobs, \$predictedAccumulator);
 	Util::debugPrint ( 'seeds added to job queue ');
+	
+	my $threadResults = finishAndCleanUpThreads(@threadPool);
+	Util::debugPrint ( 'crawling finished, beginning post processing');
+	
+	performPostProcessing($threadResults);
+	
+	Util::debugPrint ( 'post processing finished, exiting script');
+	return 1;
+}
+
+## @fn static void retrieveAndVerifyConfigurationFilePath()
+# this function is used to get the configuration file path and ensure a legal filename was supplied. if this isn't the case
+# the script will either print the usage and exit or simply exit, depending on the circumstances
+sub retrieveAndVerifyConfigurationFilePath
+{
+	my $configFilePath = $ARGV[0];
+	if (-e $configFilePath)
+	{
+		return $configFilePath;
+	}
+	elsif (scalar(@ARGV) == 0)
+	{
+		printUsage();
+		Util::debugPrint ('No configuration file specified, script exiting');
+		exit(0);
+	}
+	else
+	{
+		Util::debugPrint ('ERROR: Configuration file not found, script exiting');
+		exit(1);
+	}
+}
+
+## @fn static void performPostProcessing($threadResults)
+# this function handles the calls to external post processing modules
+# @param threadResults a reference to a hash containing a key for each worker thread id and the results of their thread function
+sub performPostProcessing
+{
+	
+}
+
+## @fn static void printUsage()
+# this function prints the proper calling convention for the script
+sub printUsage
+{
+	print "\n\tUsage:\n\n\t\tperl webCrawler.pl <configuration file>\n";
+}
+
+## @fn static void finishAndCleanUpThreads(@threadPool)
+# this function joins all the existing working threads and places their results in a hash indexed by thread id
+# @param threadPool array of the worker thread objects
+sub finishAndCleanUpThreads
+{
+	my @threadPool = @_;
 	my $threadResults = {};
 	foreach(@threadPool)
 	{
 		$threadResults->{$_->tid()} = $_->join();
 	}
-	Util::debugPrint ( 'crawling finished, beginning post processing');
-	
-	return 1;
+	return $threadResults;
 }
 
 sub initializeThreads
