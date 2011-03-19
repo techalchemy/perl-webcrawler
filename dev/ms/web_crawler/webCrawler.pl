@@ -102,14 +102,14 @@ sub main
 	$processedAccumulator = 0;
 
 	my @seedRecords = buildPageRecords(0, @seeds);
-	
+	#add jobs to queue
+	addJobsToQueue(\@seedRecords, $pendingJobs, \$predictedAccumulator);
 	
 	#initialize the threads
 	my @threadPool = initializeThreads($pendingJobs, $visitedPages, \$predictedAccumulator, \$processedAccumulator);
 	Util::debugPrint ( 'initializing threads and starting crawl' );
 	
-	#add jobs to queue
-	addJobsToQueue(\@seedRecords, $pendingJobs, \$predictedAccumulator);
+	
 	Util::debugPrint ( 'seeds added to job queue ');
 	
 	my $threadResults = finishAndCleanUpThreads(@threadPool);
@@ -149,7 +149,11 @@ sub retrieveAndVerifyConfigurationFilePath
 # @param threadResults a reference to a hash containing a key for each worker thread id and the results of their thread function
 sub performPostProcessing
 {
-	
+	my $crawlResults = $_[0];
+	while (my ($key, $value) = each %{$crawlResults})
+	{
+		print "thread " . $key . " has the following throughput samples " . join(",", @{$crawlResults->{$key}->getThroughputSamples});
+	}
 }
 
 ## @fn static void printUsage()
@@ -273,7 +277,7 @@ sub getCurrentTimeString
 sub processPage
 {
 	#obtain the page record
-	my ($pageRecord, $pendingJobs, $visitedPages, $predictedAccumulatorRef, $graphCrawler) = @_;
+	my ($pageRecord, $pendingJobs, $visitedPages, $predictedAccumulatorRef, $graphCrawler, $statsAggregator) = @_;
 	#grab the site contents
 	my $siteContents = get ($pageRecord->{url});
 	#parse the page
@@ -300,7 +304,7 @@ sub processPage
 #	}
 	
 	#update the during crawl statistics
-	
+	#$statsAggregator->update($pageRecord->{url}, \@currentPageLinks);
 	#add the links to the queue
 	my @resultPageRecords = ();
 	my $currentLinkDepth = $pageRecord->{linkDepth};
@@ -334,12 +338,13 @@ sub pruneLinks
 sub workerThread
 {
 	my ($pendingJobs, $visitedPages, $predictedAccumulatorRef, $processedAccumulatorRef) = @_;
-	my $crawlGraph = \{};
+	my $statsAggregator = CrawlStatisticsAggregator->new();
+	$statsAggregator->setSampleRate($options{'throughputSampleRate'});
 	while (my $newJob = $pendingJobs->dequeue())
-	{
+	{	
+		processPage($newJob, $pendingJobs, $visitedPages, $predictedAccumulatorRef, $crawlGraph, $statsAggregator);
 		$$processedAccumulatorRef++; 
 		Util::debugPrint( 'total jobs processed ' . $$processedAccumulatorRef );
-		processPage($newJob, $pendingJobs, $visitedPages, $predictedAccumulatorRef, $crawlGraph);
 		if ($$predictedAccumulatorRef == $$processedAccumulatorRef)
 		{
 			last;
@@ -347,5 +352,5 @@ sub workerThread
 		threads->yield();
 	}
 	Util::debugPrint('finished');
-	return $crawlGraph;
+	return $statsAggregator;
 }

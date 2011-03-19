@@ -10,20 +10,15 @@
 #	- TOTAL_JOBS_PROCESSED this keeps track of the total number of jobs processed so far
 # 	- JOBS_PROCESSED_ACCUMULATOR this keeps track of the jobs processed since the last throughput sample was taken
 #	- LAST_SAMPLE_TIME this keeps track of the last time the class took a sample
-#	- SAMPLE_RATE this keeps track of the time in milliseconds between samples
+#	- SAMPLE_RATE this keeps track of the time in seconds between samples
 #	- CRAWL_GRAPH this is a reference to a hash with the following format @em domain => outgoing links hash reference
 #	- THROUGHPUT_SAMPLES this is a reference to the array containing all the throughput samples
 #	- SAMPLE_START_TIME this holds the time when the very first sample started
 package CrawlStatisticsAggregator;
 
-use Time::HiRes qw(gettimeofday);
+use Time::HiRes qw(time);
 
-## @var TIMER_UNITS_PER_MILLISECOND
-# this is used because the user will specify a sample rate in milliseconds but the timer used is in microseconds
-## @var TIMER_UNITS_PER_MILLISECOND
-# used to compensate for the fact that sample rates are specified in milliseconds but the
-# timer being used by this module operates in microseconds
-use constant TIMER_UNITS_PER_MILLISECOND => 1000;
+use constant DEFAULT_SAMPLE_RATE => 60;
 
 
 ## @cmethod CrawlStatisticsAggregator new()
@@ -35,7 +30,7 @@ sub new
 	$self->{TOTAL_JOBS_PROCESSED} = 0;
 	$self->{JOBS_PROCESSED_ACCUMULATOR} = 0;
 	$self->{LAST_SAMPLE_TIME} = 0;
-	$self->{SAMPLE_RATE} = 0;
+	$self->{SAMPLE_RATE} = DEFAULT_SAMPLE_RATE;
 	$self->{CRAWL_GRAPH} = {};
 	$self->{THROUGHPUT_SAMPLES} = [];
 	$self->{SAMPLE_START_TIME} = 0;
@@ -44,13 +39,12 @@ sub new
 }
 
 
-## @cmethod void setSampleRate($millisecondsBetweenSamples)
+## @cmethod void setSampleRate($secondsBetweenSamples)
 # method used to set the sample rate
-# @param millisecondsBetweenSamples name should speak for itself
+# @param secondsBetweenSamples
 sub setSampleRate
 {
-	#account for using micro second timer
-	$_[0]->{SAMPLE_RATE} = $_[1] * TIMER_UNITS_PER_MILLISECOND;
+	$_[0]->{SAMPLE_RATE} = $_[1];
 }
 
 ## @cmethod void update($url, $links)
@@ -61,7 +55,7 @@ sub update
 {
 	my ($self, $url, $links) = @_;
 	# add the current page and its links to the crawl graph
-	_addPageToGraph($self, $url, @{$links});
+	#_addPageToGraph($self, $url, @{$links});
 	_updateThroughput($self);
 }
 
@@ -106,7 +100,8 @@ sub _updateThroughput
 		my $leftToPush = int($samplesMissed - 1);
 		while ($leftToPush > 0)
 		{
-			push (@{$self->THROUGHPUT_SAMPLES}, 0);
+			push (@{$self->{THROUGHPUT_SAMPLES}}, 0);
+			$leftToPush--;
 		}
 		$self->{LAST_SAMPLE_TIME} = $currentTime;
 	}
@@ -120,7 +115,7 @@ sub _addPageToGraph
 {
 	my ($self, $url, @links) = @_;
 	my $domainName = extractDomainName($url);
-	Util::debugPrint('domain name extracted: ' . $domainName);
+	#Util::debugPrint('domain name extracted: ' . $domainName);
 	my $outgoingLinks = $self->{CRAWL_GRAPH}->{$domainName};
 	foreach(@links)
 	{
@@ -138,11 +133,10 @@ sub extractDomainName
 	return $currentDomain;
 }
 
-#returns the time in microseconds
+#returns the time in seconds
 sub _getTime
 {
-	my ($seconds, $microseconds) = gettimeofday;
-	return ($seconds * 10**6) + $microseconds;
+	return time();
 }
 
 
