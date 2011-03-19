@@ -1,20 +1,34 @@
-## @file CrawlStatisticsAggregator.pm
-# this module is an implementation of the crawl statistics aggregator class
+## @file
+# Implementation of CrawlStatisticsAggregator
+#
+# @copy 2011, Michael Sobczak
+# $Id: CrawlStatisticsAggregator.pm 2011/03/18
 
-## @class CrawlStatisticsAggregator
-# @par Description
-# This class is intended to be used by worker threads in the crawler. it will aggregate runtime
-# crawl statistics using the update method. after all the workers are done, all the instances
-# of this class will be consolidated and processed by other modules to generate output data
+## @class
+# A class that will be used to aggregate statistics on the web crawl during runtime
+# @par Fields
+#	- TOTAL_JOBS_PROCESSED this keeps track of the total number of jobs processed so far
+# 	- JOBS_PROCESSED_ACCUMULATOR this keeps track of the jobs processed since the last throughput sample was taken
+#	- LAST_SAMPLE_TIME this keeps track of the last time the class took a sample
+#	- SAMPLE_RATE this keeps track of the time in milliseconds between samples
+#	- CRAWL_GRAPH this is a reference to a hash with the following format @em domain => outgoing links hash reference
+#	- THROUGHPUT_SAMPLES this is a reference to the array containing all the throughput samples
+#	- SAMPLE_START_TIME this holds the time when the very first sample started
 package CrawlStatisticsAggregator;
 
 use Time::HiRes qw(gettimeofday);
 
 ## @var TIMER_UNITS_PER_MILLISECOND
+# this is used because the user will specify a sample rate in milliseconds but the timer used is in microseconds
+## @var TIMER_UNITS_PER_MILLISECOND
 # used to compensate for the fact that sample rates are specified in milliseconds but the
 # timer being used by this module operates in microseconds
 use constant TIMER_UNITS_PER_MILLISECOND => 1000;
 
+
+## @cmethod CrawlStatisticsAggregator new()
+# the constructor for the class
+# @return a shiny new CrawlStatisticsAggregator
 sub new
 {
 	my $self = {};
@@ -29,12 +43,20 @@ sub new
 	return $self;
 }
 
+
+## @cmethod void setSampleRate($millisecondsBetweenSamples)
+# method used to set the sample rate
+# @param millisecondsBetweenSamples name should speak for itself
 sub setSampleRate
 {
 	#account for using micro second timer
 	$_[0]->{SAMPLE_RATE} = $_[1] * TIMER_UNITS_PER_MILLISECOND;
 }
 
+## @cmethod void update($url, $links)
+# this is the public method of the object that will be called by the crawler to update the statistics each time a job is processed
+# @param url the url of the page being processed
+# @param links a reference to an array containing the links the page denoted by @em url contains
 sub update
 {
 	my ($self, $url, $links) = @_;
@@ -43,6 +65,8 @@ sub update
 	_updateThroughput($self);
 }
 
+## @cmethod void _updateThroughput()
+# This is a private method of the class. is called by the update() method to handle the throughput sampling
 sub _updateThroughput
 {
 	my $self = shift;
@@ -88,6 +112,10 @@ sub _updateThroughput
 	}
 }
 
+## @cmethod void _addPageToGraph($url, @links)
+# adds the current page to the crawl graph after stripping its domain
+# @param url this is the url of the current page
+# @param links this is an array of pages the url page links to
 sub _addPageToGraph
 {
 	my ($self, $url, @links) = @_;
