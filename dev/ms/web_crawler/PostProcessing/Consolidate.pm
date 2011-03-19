@@ -1,18 +1,47 @@
+## @file Consolidate.pm
+# this module is intended to be used after a run of the crawler is finished and the
+# individual statistics aggregator objects from each thread need to be combined into
+# a final combined data set
+
+## @class Consolidate
+# this class only consists of static methods, there is no need for it to be instantiated
 package Consolidate;
-
-
-
+use Class::Struct;
 use CrawlStatisticsAggregator;
 
+## @class CONSOLIDATED_STATISTICS
+# this struct is used as a container for the consolidated statistic outputs
+struct(CONSOLIDATED_STATISTICS => {
+	THROUGHPUT => '*@',
+	SAMPLE_RATE => '$',
+	CRAWL_GRAPH => '*%',
+});
+
+## @fn public static CONSOLIDATED_STATISTICS consolidateStatistics(@aggregators)
+# this function takes a list of aggregators and combines them into a single data set
+# @param @aggregators a list of CrawlStatisticsAggregator objects to consolidate
+# @return a CONSOLIDATED_STATISTICS struct populated with the combined outputs
 sub consolidateStatistics
 {
 	# get the aggregator objects passed to function
-	my $self = shift;
 	my @aggregators = @_;
+	# get the combined throughput samples
 	my $consolidatedThroughputSamples = _consolidateThroughputSamples(@aggregators);
+	# get the combined graph
 	my $consolidatedGraph = _consolidateGraphs(@aggregators);
+	# populate the struct to be returned
+	my $consolidatedStatistics = CONSOLIDATED_STATISTICS->new(
+									THROUGHPUT => $consolidatedThroughputSamples,
+									SAMPLE_RATE => $aggregators[0]->getSampleRate(),
+									CRAWL_GRAPH => $consolidatedGraph);
+	return $consolidatedStatistics;
 }
 
+
+## @fn private static *int _consolidateThroughputSamples(@aggregators)
+# this function combines the throughput samples into a single array
+# @param @aggregators the disparate aggregators used by worker threads
+# @return an array of throughput samples over time
 sub _consolidateThroughputSamples
 {
 	my @aggregators = @_;
@@ -66,12 +95,23 @@ sub _consolidateThroughputSamples
 	return \@consolidatedArray;
 }
 
+## @fn private static int _calculateStartIndexForSampleList($startTime, $sampleRate)
+# this function uses the starting time and the sample rate of a given throughput sample array
+# and uses it to compute the index in the combined array this particular sample array should
+# start placing its values
+# @param startTime starting time of the sampling
+# @param sampleRate time in milliseconds between samples
+# @return index the array index to start dumping samples in
 sub _calculateStartIndexForSampleList
 {
 	my ($startTime, $sampleRate) = @_;
 	my $index = int($startTime/$sampleRate);
 }
 
+## @fn private static {} _consolidateGraphs(@aggregators)
+# this function consolidates the graphs into a single whole
+# @param aggregators the list of aggregators whose graphs should be combined
+# @return a reference to the combined graph
 sub _consolidateGraphs
 {
 	# get aggregators passed to function

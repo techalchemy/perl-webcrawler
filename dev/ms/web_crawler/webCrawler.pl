@@ -1,43 +1,15 @@
-######################################################################################
-#								  webCrawler.pl		
-#	Author: Michael Sobczak
-#	Date: 2/20/2011								 
-######################################################################################
-# This script is the main driver of the web crawler. It is called with a config file
-# that controls many of its properties. This script will take a list of seeds and
-# crawl web dictated by the seed pages and the linkDepth. As well as various other
-# pruning properties. WARNING: must be run with -Dusethreads parameter set to
-# perl executable. This will allow multiple threads to run.
-# The following is a list of the config parameters that can be set in a config
-# file and what they do
-#	
-# TASKS FOR THIS THING
-# TODO: remove excess code
-# TODO: documentation in natural docs format?
-# TODO: build domain graph
-#			discuss issues and run experiment
-# TODO: change the structure of this project. add some organization via different
-#		file structure etc.
-# TODO: Incorporate calls to PostData
-# 			Including Post Processing Results. See Below.
-# TODO: add post processing routines
-# TODO: add updating running statistics
-#			for performance and web based
-# TODO: LARGE GOAL
-#			Change how the threading model works
-#			Boss and Worker threads
-#				Amdahl's law considerations, job queue add and remove
-#				requests at the entry and exit of processPage are likely
-#				the main component of the serial code runtime. With this
-#				in mind the execution of this script will change to
-#				a more scalable tree based implementation eventually.
-#				as for now, a boss worker thread model should be the next step 
-#			Tree based implementation
-#				current idea is a hierarchy of crawlers that can send signals
-#				back and forth to share data 
-#																				 
-######################################################################################
-
+## @file webCrawler.pl
+# this file is the main script for the web crawler. It is the file that will be explicity invoked
+# to start a crawl. It expects the first parameter fed to it to be a path to a configuration file.
+# the configuration file will specify many of the runtime parameters of the crawler and used
+# throughout the code. The following config parameters are used by the crawler and its subsidiary
+# modules
+# - Configuration Parameters
+#	- useDebugMode this paramater indicates whether or not debugging statements should be printed
+#	- debugFile name of the debug output file
+#	- seedFilename the name of the file containing the seeds to start the crawler with
+#	- numWorkers number of worker threads the crawler should create
+#	- linkDepth the maximum link depth the crawler should crawl to (seeds are considered to have a link depth of 0)
 
 # check for threading enabled
 my $can_use_threads = eval 'use threads; 1';
@@ -62,15 +34,19 @@ struct(PAGE_RECORD => {url => '$',
 require 'Parsing/SiteParser.pm';
 require 'Utilities/Util.pm';
 require 'Persistence/PostData.pm';
+require 'PostProcessing/CrawlStatisticsAggregator.pm';
 use Parsing::SiteParser;
 use Utilities::Util qw(debugPrint);
 use Persistence::PostData qw(sendToDB);
+use PostProcessing::CrawlStatisticsAggregator qw(update);
 my %options;
 
 print "starting webCrawler.pl...\n";
 main();
 print "finished running webCrawler.pl\n";
 
+## @fn public static void main()
+# this is the entry point of the script
 sub main
 {
 	#set debugging mode and logging
@@ -78,21 +54,13 @@ sub main
 	# assumes config file path is first parameter
 	# grab config file path
 	my $configFilePath = $ARGV[0];
+	
 	# load config params into %options
-	%options = Util::loadConfigFile($configFilePath);
-	Util::setGlobalDebug($options{'useDebugMode'});
-	Util::setGlobalDebugFile($options{'debugFile'});
-	Util::setThreadRecord(1);
-	unlink($options{'debugFile'});
+	loadConfigurationFile($configFilePath);
 	Util::debugPrint( "configuration file loaded" );
+	
 	#load the seeds file
-	open (SEEDS, "<", $options{'seedFilename'});
-	foreach(<SEEDS>)
-	{
-		chomp();
-		push(@seeds, $_);
-	}
-	close SEEDS;
+	my @seeds = getSeeds();
 	Util::debugPrint ( 'seed file loaded' );
 	
 	#initialize the job queue
@@ -106,24 +74,18 @@ sub main
 	my $visitedPages = &share({});
 	#these accumulators are used to track the program
 	my $predictedAccumulator : shared;
-	#my $predictedAccumulatorRef = &share($predictedAccumulatorRef);
 	my $processedAccumulator : shared;
 	#&share($processedAccumulatorRef);
 	$predictedAccumulator = 0;
 	$processedAccumulator = 0;
-	#share(@pendingJobs);
 
 	my @seedRecords = buildPageRecords(0, @seeds);
 	
 	
 	#initialize the threads
+	my @threadPool = initializeThreads($pendingJobs, $visitedPages, \$predictedAccumulator, \$processedAccumulator);
 	Util::debugPrint ( 'initializing threads and starting crawl' );
-	for (my $index; $index < $options{'numWorkers'}; $index++)
-	{
-		Util::debugPrint ("creating thread #" . int($index) );
-		push(@threadPool, threads->create(\&workerThread, $pendingJobs, $visitedPages, 
-				\$predictedAccumulator, \$processedAccumulator));
-	}
+	
 	
 	#add jobs to queue
 	addJobsToQueue(\@seedRecords, $pendingJobs, \$predictedAccumulator);
@@ -136,6 +98,42 @@ sub main
 	Util::debugPrint ( 'crawling finished, beginning post processing');
 	
 	return 1;
+}
+
+sub initializeThreads
+{
+	my ($pendingJobs, $visitedPages, $predictedAccumulatorRef, $processedAccumulatorRef) = @_;
+	my @threadPool;
+	for (my $index; $index < $options{'numWorkers'}; $index++)
+	{
+		Util::debugPrint ("creating thread #" . int($index) );
+		push(@threadPool, threads->create(\&workerThread, $pendingJobs, $visitedPages, 
+				$predictedAccumulatorRef, $processedAccumulatorRef));
+	}
+	return @threadPool;
+}
+
+sub getSeeds
+{
+	my @seeds;
+	open (SEEDS, "<", $options{'seedFilename'});
+	foreach(<SEEDS>)
+	{
+		chomp();
+		push(@seeds, $_);
+	}
+	close SEEDS;
+	return @seeds;
+}
+
+sub loadConfigurationFile
+{
+	my $configFilePath = $_[0];
+	%options = Util::loadConfigFile($configFilePath);
+	Util::setGlobalDebug($options{'useDebugMode'});
+	Util::setGlobalDebugFile($options{'debugFile'});
+	Util::setThreadRecord(1);
+	unlink($options{'debugFile'});
 }
 
 sub addJobsToQueue
@@ -215,21 +213,21 @@ sub processPage
 	Util::debugPrint('pruned ' . $numLinksPruned . ' links');
 	
 	# LINE ADDED FOR DAN --  I WANT PRUNED LINKS BACK FOR DB
-	$parsedPage->links->{@prunedPageLinks};
+	#$parsedPage->links->{@prunedPageLinks};
 	
 	#output the page here using sendToDB(urgency, confighashref, url, parsed page object, and whatever else you want)
-	Util::debugPrint('Sending Page to Output for DB');
-	if(sendToDB(0, \%options, $pageRecord->{url}, $parsedPage))
-	{
-		debugPrint(1, 'SENT OUTPUT SUCCESSFULLY');
-	}
-	else
-	{
-		debugPrint(1, 'FAILED SENDING OUTPUT!');
-	}
+#	Util::debugPrint('Sending Page to Output for DB');
+#	if(sendToDB(0, \%options, $pageRecord->{url}, $parsedPage))
+#	{
+#		debugPrint(1, 'SENT OUTPUT SUCCESSFULLY');
+#	}
+#	else
+#	{
+#		debugPrint(1, 'FAILED SENDING OUTPUT!');
+#	}
 	
 	#update the during crawl statistics
-	addPageToGraph($graphCrawler, $pageRecord->{'url'}, $parsedPage->links);
+	
 	#add the links to the queue
 	my @resultPageRecords = ();
 	my $currentLinkDepth = $pageRecord->{linkDepth};

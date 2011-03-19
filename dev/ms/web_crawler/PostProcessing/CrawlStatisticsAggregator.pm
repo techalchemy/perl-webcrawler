@@ -1,8 +1,18 @@
-#this class will be used to handle the post processing functions in the webCrawler
+## @file CrawlStatisticsAggregator.pm
+# this module is an implementation of the crawl statistics aggregator class
 
+## @class CrawlStatisticsAggregator
+# @par Description
+# This class is intended to be used by worker threads in the crawler. it will aggregate runtime
+# crawl statistics using the update method. after all the workers are done, all the instances
+# of this class will be consolidated and processed by other modules to generate output data
 package CrawlStatisticsAggregator;
+
 use Time::HiRes qw(gettimeofday);
 
+## @var TIMER_UNITS_PER_MILLISECOND
+# used to compensate for the fact that sample rates are specified in milliseconds but the
+# timer being used by this module operates in microseconds
 use constant TIMER_UNITS_PER_MILLISECOND => 1000;
 
 sub new
@@ -54,6 +64,7 @@ sub _updateThroughput
 	# Add to the processed job counter and the accumulator
 	$self->{JOBS_PROCESSED_ACCUMULATOR}++;
 	$self->{TOTAL_JOBS_PROCESSED}++;
+	
 	# see if time of sample has elapsed
 	# since an instance of this object is only one of many
 	# and will need to aligned with others, we need to account
@@ -92,13 +103,11 @@ sub _addPageToGraph
 
 sub extractDomainName
 {
-	foreach(@_)
-	{
-		my $temp = $_;
-		$temp =~ s/(http:\/\/|www\.)//g;
-		$temp =~ s/\/.*$//g;
-		$_ = $temp;
-	}
+	my $currentDomain = $_[0];
+	$currentDomain =~ s!^https?://(?:www\.)?!!i;
+	$currentDomain =~ s!/.*!!;
+	$currentDomain =~ s/[\?\#\:].*//;
+	return $currentDomain;
 }
 
 #returns the time in microseconds
