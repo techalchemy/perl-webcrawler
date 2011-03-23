@@ -75,7 +75,6 @@ sub parseData
 	my $siteContents = $_[0];
 	#initialize the working struct to be populated while parsing
 	$workingPageStruct = new PARSED_PAGE;
-	Util::debugPrint('parseData called, initializing parser');
 	#initialize parsed contents struct
 	#set up the HTML Parser with proper event handling subroutines
 	my $parser = HTML::Parser->new(start_h => [\&tagHandler, "tagname, attr"],
@@ -83,12 +82,12 @@ sub parseData
 								   end_h => [\&endHandler, "tagname"]);
 	$parser->report_tags(@tagList);
 	#call the parse function with downcased html data
-	Util::debugPrint('parser initialized, starting parsing');
+	#Util::debugPrint('parser initialized, starting parsing');
 	$parser->parse(lc($siteContents));
 	
 	
 	#return the now populated struct
-	Util::debugPrint('parsing done');
+	#Util::debugPrint('parsing done');
 	return $workingPageStruct;
 }
 

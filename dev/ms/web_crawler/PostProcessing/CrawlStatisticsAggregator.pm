@@ -77,7 +77,8 @@ sub _updateThroughput
 	# time that this instance started sampling
 	if ($lastSampleTime == 0)
 	{
-		$self->{SAMPLE_START_TIME} = _getTime();
+		$self->{LAST_SAMPLE_TIME} = $currentTime;
+		$self->{SAMPLE_START_TIME} = $currentTime;
 	}
 	# Add to the processed job counter and the accumulator
 	$self->{JOBS_PROCESSED_ACCUMULATOR}++;

@@ -27,7 +27,6 @@ my $recordThreadFlag = 0;
 sub loadConfigFile
 {
 	my $configFilePath = $_[0];
-	print "Config Path from UTIL: " . $configFilePath . "\n";
 	#create the configuration file hash
 	my %configHash;
 	#open the file for reads

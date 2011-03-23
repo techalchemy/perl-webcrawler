@@ -44,13 +44,18 @@ use Cwd;
 use Parsing::SiteParser;
 use Utilities::Util qw(debugPrint);
 use Persistence::PostData qw(sendToDB);
-use PostProcessing::CrawlStatisticsAggregator;
+use lib 'PostProcessing';
+use CrawlStatisticsAggregator;
+use Consolidate;
+
 
 #declare structs used by crawler
 struct(PAGE_RECORD => {url => '$',
 					   timestamp => '$',
 					   linkDepth => '$',
 					  });
+
+use constant TERMINATE_WORKER => 'TERMINATE';
 
 ## @var options
 # this is a hash that will store the options specified by the supplied configuration file
@@ -65,10 +70,9 @@ my %options = {
 };
 
 
-# script starts executing here
-print "starting webCrawler.pl...\n";
+print "(" . getCurrentTimeString() . ") starting webCrawler.pl...\n";
 main();
-print "finished running webCrawler.pl\n";
+print "(" . getCurrentTimeString() . ") finished running webCrawler.pl\n";
 
 ## @fn public static void main()
 # this is the entry point of the script
@@ -106,7 +110,7 @@ sub main
 	addJobsToQueue(\@seedRecords, $pendingJobs, \$predictedAccumulator);
 	
 	#initialize the threads
-	my @threadPool = initializeThreads($pendingJobs, $visitedPages, \$predictedAccumulator, \$processedAccumulator);
+	my @threadPool = initializeThreads($pendingJobs, \$predictedAccumulator, \$processedAccumulator);
 	Util::debugPrint ( 'initializing threads and starting crawl' );
 	
 	
@@ -150,14 +154,19 @@ sub retrieveAndVerifyConfigurationFilePath
 sub performPostProcessing
 {
 	my $crawlResults = $_[0];
+	my $totalJobsProcessed = 0;
 	while (my ($key, $value) = each %{$crawlResults})
 	{
-		print "thread " . $key . " has the following throughput samples " . join(",", @{$crawlResults->{$key}->getThroughputSamples});
+		$totalJobsProcessed += $crawlResults->{$key}->getTotalJobsProcessed();
+		print "thread " . $key . " has the following throughput samples " . join(",", @{$crawlResults->{$key}->getThroughputSamples}) . "\n";
 	}
+	print "total jobs processed: " . $totalJobsProcessed . "\n";
+	
+	
 }
 
 ## @fn static void printUsage()
-# this function prints the proper calling convention for the script
+# this function prints the proper calling syntax for the script
 sub printUsage
 {
 	print "\n\tUsage:\n\n\t\tperl webCrawler.pl <configuration file>\n";
@@ -166,6 +175,7 @@ sub printUsage
 ## @fn static void finishAndCleanUpThreads(@threadPool)
 # this function joins all the existing working threads and places their results in a hash indexed by thread id
 # @param threadPool array of the worker thread objects
+# @return threadResults returns the results of the worker thread's computation
 sub finishAndCleanUpThreads
 {
 	my @threadPool = @_;
@@ -177,19 +187,31 @@ sub finishAndCleanUpThreads
 	return $threadResults;
 }
 
+## @fn static threads[] initializeThreads($pendingJobs, $predictedAccumulatorRef, $processedAccumulatorRef)
+# handles thread initialization for the crawling. Creates the threads and places references to them
+# into the thread pool array which is eventually returned.
+# @param pendingJobs a reference to the job queue 
+# @param predictedAccumulatorRef shared reference to the discovered number of jobs thus far
+# @param processedAccumulatorRef shared reference to the processed number of jobs so far
+# @return threadPool a list of references to the worker threads
 sub initializeThreads
 {
-	my ($pendingJobs, $visitedPages, $predictedAccumulatorRef, $processedAccumulatorRef) = @_;
+	my ($pendingJobs, $predictedAccumulatorRef, $processedAccumulatorRef) = @_;
 	my @threadPool;
 	for (my $index; $index < $options{'numWorkers'}; $index++)
 	{
 		Util::debugPrint ("creating thread #" . int($index) );
-		push(@threadPool, threads->create(\&workerThread, $pendingJobs, $visitedPages, 
-				$predictedAccumulatorRef, $processedAccumulatorRef));
+		push(@threadPool, threads->create(\&workerThread, $pendingJobs, 
+											  $predictedAccumulatorRef, 
+											  $processedAccumulatorRef));
 	}
 	return @threadPool;
 }
 
+
+## @fn static String[] getSeeds()
+# grabs the seeds from the file specified by the seedFilename parameter in the configuration file
+# @return a list of the seeds obtained from the file
 sub getSeeds
 {
 	my @seeds;
@@ -271,23 +293,38 @@ sub getCurrentTimeString
 	my $day = @tempTime[3];
 	my $month = @tempTime[4];
 	my $year = int(@tempTime[5]) + 1900;
+	_addZeroIfLessThanTen($hours, $minutes, $seconds);
 	return $day . "/" . $month . "/" . $year . " " . $hours . ":" . $minutes . ":" . $seconds;
 }
 
+## @fn private static void _addZeroIfLessThanTen(@strings)
+# This function takes a list of strings and prefixes a zero to all the
+# strings that are less than 10
+sub _addZeroIfLessThanTen
+{
+	foreach(@_)
+	{
+		if ($_ < 10)
+		{
+			$_ = '0' . $_;
+		}
+	}
+}
+
+## @fn static void processPage($pageRecord, $pendingJobs, $visitedPages, $predictedAccumulatorRef, $statsAggregator)
+# This function is called by the worker threads with each job they receive. This function is currently
+# a wrapper for 
 sub processPage
 {
 	#obtain the page record
-	my ($pageRecord, $pendingJobs, $visitedPages, $predictedAccumulatorRef, $graphCrawler, $statsAggregator) = @_;
+	my ($pageRecord, $pendingJobs, $predictedAccumulatorRef, $statsAggregator) = @_;
 	#grab the site contents
-	my $siteContents = get ($pageRecord->{url});
+	my $siteContents = getPageContents($pageRecord->{url});
 	#parse the page
 	my $parsedPage = SiteParser::parseData($siteContents);
-	Util::debugPrint(' processing ' . $pageRecord->{url});
 	#prune the links here
 	my @currentPageLinks = @{$parsedPage->links};
 	my @prunedPageLinks = pruneLinks(@currentPageLinks);
-	my $numLinksPruned = scalar(@currentPageLinks) - scalar(@prunedPageLinks);
-	Util::debugPrint('pruned ' . $numLinksPruned . ' links');
 	
 	# LINE ADDED FOR DAN --  I WANT PRUNED LINKS BACK FOR DB
 	#$parsedPage->links->{@prunedPageLinks};
@@ -304,21 +341,28 @@ sub processPage
 #	}
 	
 	#update the during crawl statistics
-	#$statsAggregator->update($pageRecord->{url}, \@currentPageLinks);
-	#add the links to the queue
-	my @resultPageRecords = ();
-	my $currentLinkDepth = $pageRecord->{linkDepth};
+	$statsAggregator->update($pageRecord->{url}, \@currentPageLinks);
+	
+	checkLinkDepthAndAddJobs($pageRecord->{linkDepth}, 
+							\@prunedPageLinks, 
+							$pendingJobs, 
+							$predictedAccumulatorRef);
+}
+
+sub checkLinkDepthAndAddJobs
+{
+	my ($currentLinkDepth, $prunedPageLinks, $jobQueue, $discoveredCounterRef) = @_;
 	if (int($currentLinkDepth) < int($options{'linkDepth'}))
 	{
-		Util::debugPrint(" building records");
-		#increase the predicted jobs accumulator
-		@resultPageRecords = buildPageRecords($currentLinkDepth + 1, @prunedPageLinks);
+		my @resultPageRecords = buildPageRecords($currentLinkDepth + 1, @{$prunedPageLinks});
+		addJobsToQueue(\@resultPageRecords, $jobQueue, $discoveredCounterRef);
 	}
-	else
-	{
-		Util::debugPrint(' link depth limit reached ');
-	}
-	addJobsToQueue(\@resultPageRecords, $pendingJobs, $predictedAccumulatorRef);
+}
+
+sub getPageContents
+{
+	my $url = $_[0];
+	return get($url);
 }
 
 sub pruneLinks
@@ -337,16 +381,26 @@ sub pruneLinks
 
 sub workerThread
 {
-	my ($pendingJobs, $visitedPages, $predictedAccumulatorRef, $processedAccumulatorRef) = @_;
+	my ($pendingJobs, $predictedAccumulatorRef, $processedAccumulatorRef) = @_;
 	my $statsAggregator = CrawlStatisticsAggregator->new();
 	$statsAggregator->setSampleRate($options{'throughputSampleRate'});
 	while (my $newJob = $pendingJobs->dequeue())
 	{	
-		processPage($newJob, $pendingJobs, $visitedPages, $predictedAccumulatorRef, $crawlGraph, $statsAggregator);
+		if ($newJob eq TERMINATE_WORKER)
+		{
+			last;
+		}
+		processPage($newJob, $pendingJobs, $predictedAccumulatorRef, $statsAggregator);
 		$$processedAccumulatorRef++; 
 		Util::debugPrint( 'total jobs processed ' . $$processedAccumulatorRef );
 		if ($$predictedAccumulatorRef == $$processedAccumulatorRef)
 		{
+			my @terminalJobArray;
+			for (my $index = 0; $index < $options{'numWorkers'} - 1; $index++)
+			{
+				push(@terminalJobArray, TERMINATE_WORKER);
+			}
+			$pendingJobs->enqueue(@terminalJobArray);
 			last;
 		}
 		threads->yield();
