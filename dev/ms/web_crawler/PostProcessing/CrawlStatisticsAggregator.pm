@@ -59,6 +59,17 @@ sub update
 	_updateThroughput($self);
 }
 
+## @cmethod void finish()
+# called when the thread is being finished. The purpose of this function is to ensure that
+# statistics that are in the process of being calculated aren't dropped when the thread
+# is finished running
+sub finish
+{
+	my $self = $_[0];
+	push(@{$self->{THROUGHPUT_SAMPLES}}, $self->{JOBS_PROCESSED_ACCUMULATOR});
+	$self->{JOBS_PROCESSED_ACCUMULATOR} = 0;
+}
+
 ## @cmethod void _updateThroughput()
 # This is a private method of the class. is called by the update() method to handle the throughput sampling
 sub _updateThroughput

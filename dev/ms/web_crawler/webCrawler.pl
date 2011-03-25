@@ -47,6 +47,7 @@ use Persistence::PostData qw(sendToDB);
 use lib 'PostProcessing';
 use CrawlStatisticsAggregator;
 use Consolidate;
+use OutputGenerator;
 
 
 #declare structs used by crawler
@@ -121,7 +122,7 @@ sub main
 	
 	performPostProcessing($threadResults);
 	
-	Util::debugPrint ( 'post processing finished, exiting script');
+	Util::debugPrint ( 'post processing finished, exiting script' );
 	return 1;
 }
 
@@ -155,14 +156,18 @@ sub performPostProcessing
 {
 	my $crawlResults = $_[0];
 	my $totalJobsProcessed = 0;
+	my @aggregators;
 	while (my ($key, $value) = each %{$crawlResults})
 	{
-		$totalJobsProcessed += $crawlResults->{$key}->getTotalJobsProcessed();
-		print "thread " . $key . " has the following throughput samples " . join(",", @{$crawlResults->{$key}->getThroughputSamples}) . "\n";
+		push(@aggregators, $crawlResults->{$key});
 	}
-	print "total jobs processed: " . $totalJobsProcessed . "\n";
+#	print "total jobs processed: " . $totalJobsProcessed . "\n";
+	my $consolidatedStatistics = Consolidate::consolidateStatistics(@aggregators);
+	my @consolidatedThroughput = @{$consolidatedStatistics->THROUGHPUT};
+	print 'consolidated throughput: ' . join(',', @consolidatedThroughput) . "\n";
+#	
 	
-	
+	#OutputGenerator::generateOutput(getcwd() . "/output", \@aggregators);
 }
 
 ## @fn static void printUsage()
@@ -392,7 +397,7 @@ sub workerThread
 		}
 		processPage($newJob, $pendingJobs, $predictedAccumulatorRef, $statsAggregator);
 		$$processedAccumulatorRef++; 
-		Util::debugPrint( 'total jobs processed ' . $$processedAccumulatorRef );
+		#Util::debugPrint( 'total jobs processed ' . $$processedAccumulatorRef );
 		if ($$predictedAccumulatorRef == $$processedAccumulatorRef)
 		{
 			my @terminalJobArray;
@@ -406,5 +411,6 @@ sub workerThread
 		threads->yield();
 	}
 	Util::debugPrint('finished');
+	$statsAggregator->finish();
 	return $statsAggregator;
 }

@@ -28,7 +28,7 @@ sub consolidateStatistics
 	# get the combined throughput samples
 	my $consolidatedThroughputSamples = _consolidateThroughputSamples(@aggregators);
 	# get the combined graph
-	my $consolidatedGraph = _consolidateGraphs(@aggregators);
+	my $consolidatedGraph = {};#_consolidateGraphs(@aggregators);
 	# populate the struct to be returned
 	my $consolidatedStatistics = CONSOLIDATED_STATISTICS->new(
 									THROUGHPUT => $consolidatedThroughputSamples,
@@ -48,7 +48,7 @@ sub _consolidateThroughputSamples
 	# find the earliest sample time and the last sample time
 	# 	do this by looping through each aggregator and finding end/start times
 	#	pick the earliest and latest obviously
-	my ($earliestSampleTime, $latestSampleTime) = (0, 0);
+	my ($earliestSampleTime, $latestSampleTime) = (+Inf, 0);
 	foreach(@aggregators)
 	{
 		# declare local variables to be used
@@ -72,6 +72,7 @@ sub _consolidateThroughputSamples
 			$latestSampleTime = $currentLastSampleTime;
 		}
 	}
+	print 'earliest sample time found is: ' . $earliestSampleTime . "\n";
 	
 	# create the array that will hold the consolidated throughput samples
 	my @consolidatedArray;
@@ -84,7 +85,8 @@ sub _consolidateThroughputSamples
 		my @currentSampleArray = @{$_->getThroughputSamples()};
 		my $startingSampleIndex = _calculateStartIndexForSampleList(
 										$_->getSampleStartTime(), 
-										$_->getSampleRate());
+										$_->getSampleRate(),
+										$earliestSampleTime);
 		my $numSamples = scalar(@currentSampleArray);
 		for (my $currentSampleNumber = 0; $currentSampleNumber < $numSamples; $currentSampleNumber++)
 		{
@@ -104,8 +106,10 @@ sub _consolidateThroughputSamples
 # @return index the array index to start dumping samples in
 sub _calculateStartIndexForSampleList
 {
-	my ($startTime, $sampleRate) = @_;
-	my $index = int($startTime/$sampleRate);
+	my ($startTime, $sampleRate, $earliestSampleTime) = @_;
+	my $index = int(($startTime - $earliestSampleTime)/$sampleRate);
+	print 'start index being calculated: ' . $index . "\n";
+	return $index;
 }
 
 ## @fn private static {} _consolidateGraphs(@aggregators)
