@@ -15,6 +15,7 @@
 #		# this level of verbosity will go more in depth and print function calls and return values
 #		# this is the highest level of verbosity and will print a debug line for almost every line of code executed
 #	- throughputSampleRate the time in seconds between throughput samples
+#	- maxJobsToProcess the maximum number of jobs to process before exiting. Used for debugging. If less than 1, means no limit
 
 # TODO: remaining crawler tasks
 # 1). Clean up the code
@@ -106,7 +107,7 @@ sub main
 	$predictedAccumulator = 0;
 	$processedAccumulator = 0;
 
-	my @seedRecords = buildPageRecords(0, @seeds);
+	my @seedRecords = buildPageRecords(0, \@seeds);
 	#add jobs to queue
 	addJobsToQueue(\@seedRecords, $pendingJobs, \$predictedAccumulator);
 	
@@ -164,9 +165,22 @@ sub performPostProcessing
 #	print "total jobs processed: " . $totalJobsProcessed . "\n";
 	my $consolidatedStatistics = Consolidate::consolidateStatistics(@aggregators);
 	my @consolidatedThroughput = @{$consolidatedStatistics->THROUGHPUT};
+	my $currentTime = 0;
+	my $sampleRate = $consolidatedStatistics->SAMPLE_RATE;
+	
 	print 'consolidated throughput: ' . join(',', @consolidatedThroughput) . "\n";
 #	
+	open(OUTPUT_FILE, ">", "output.csv");
 	
+	print OUTPUT_FILE "time, jobs\n";
+	
+	foreach(@consolidatedThroughput)
+	{
+		print OUTPUT_FILE ($currentTime/60) . ", " . $_ . "\n";
+		$currentTime += $sampleRate;
+	}
+	
+	close OUTPUT_FILE;
 	#OutputGenerator::generateOutput(getcwd() . "/output", \@aggregators);
 }
 
@@ -253,21 +267,12 @@ sub addJobsToQueue
 	}
 }
 
-######################################################################################
-#	This function takes a link depth and a list of urls and turns them into page
-#	records in a hash
-#		Parameters
-#			content - This should be the HTML page contents. A single scalar holding
-#			all the data is expected
-#		Return
-#			A human readable using strinpopg indicating the current time
-#
-######################################################################################
+## @fn static PAGE_RECORD[] buildPageRecords($linkDepth, @urls)
 sub buildPageRecords
 {
-	my ($linkDepth, @urls) = @_;
+	my ($linkDepth, $urls) = @_;
 	my @pageRecords;
-	foreach (@urls)
+	foreach (@{$urls})
 	{
 		my %recordHash;
 		my $newRecord = \%recordHash;
@@ -279,16 +284,9 @@ sub buildPageRecords
 	return @pageRecords;
 }
 
-######################################################################################
-#	This function takes the current time and outputs it in a format that is human
-#	readable. For future processing, the time can be broken up easily with regexes
-#		Parameters
-#			content - This should be the HTML page contents. A single scalar holding
-#			all the data is expected
-#		Return
-#			A human readable using string indicating the current time
-#
-######################################################################################
+## @fn static string getCurrentTimeString()
+# This function returns the current date and time in a nice looking human readable format
+# @return string of the current time
 sub getCurrentTimeString
 {
 	my @tempTime = localtime(time);
@@ -354,22 +352,40 @@ sub processPage
 							$predictedAccumulatorRef);
 }
 
+## @fn static void checkLinkDepthAndAddJobs($currentLinkDepth, $prunedPageLinks, $jobQueue, $discoveredCounterRef)
+# This function checks to make sure that the jobs discovered don't exceed the link depth limit of the crawl. If the jobs
+# meet this criteria, they get added to the queue using an addJobToQueue function call
+# @param currentLinkDepth the link depth of the page that spawned the links possibly being added
+# @param prunedPageLinks a reference to an array of links. These should be pruned before passed to this function
+# @param jobQueue reference to the shared job queue, this gets passed through to the add jobs meeting
+# @param discoveredCounterRef a reference to a shared scalar to keep track of the jobs discovered
 sub checkLinkDepthAndAddJobs
 {
 	my ($currentLinkDepth, $prunedPageLinks, $jobQueue, $discoveredCounterRef) = @_;
 	if (int($currentLinkDepth) < int($options{'linkDepth'}))
 	{
-		my @resultPageRecords = buildPageRecords($currentLinkDepth + 1, @{$prunedPageLinks});
+		my @resultPageRecords = buildPageRecords($currentLinkDepth + 1, $prunedPageLinks);
 		addJobsToQueue(\@resultPageRecords, $jobQueue, $discoveredCounterRef);
 	}
 }
 
+## @fn static void getPageContents($url)
+# The getPageContents function is responsible for taking a url and obtaining its information by accessing the internet
+# the current implementation is one line using a function defined in the LWP::Simple module but has been abstracted out
+# of the page processing function so it can be modified in the future or placed in a different calling context
+# @param url the url of the page to grab
+# @return the raw html of the web page specified by the url
 sub getPageContents
 {
 	my $url = $_[0];
 	return get($url);
 }
 
+## @fn static void pruneLinks(@links)
+# this function is responsible for taking a list of all the links found in a page and filtering out the irrelevant ones.
+# currently the only pruning applied is a regex that makes sure the link starts with http://
+# @param links a list of potential sites to crawl
+# @return a pruned list of the links passed to the function
 sub pruneLinks
 {
 	my @links = @_;
@@ -384,11 +400,24 @@ sub pruneLinks
 	return @prunedList;
 }
 
+
+## @fn static void workerThread($pendingJobs, $predictedAccumulatorRef, $processedAccumulatorRef)
+# This function is the entry point for all of the worker threads used to process the pages. This function essentially
+# pulls jobs off the queue and processes them one by one. During the processing, more jobs will likely be added to the queue
+# the current end condition for the worker threads are when all the discovered jobs have been processed. Once a single
+# worker thread meets this condition it creates TERMINATE_WORKER jobs and adds them to the queue. When the other threads
+# obtain these jobs they will also terminate. Once finished, the thread returns the statistics aggregated during the crawl
+# @param pendingJobs a reference to the job queue
+# @param predictedAccumulatorRef reference to the total number of jobs added to the queue
+# @param processedAccumulatorRef reference to the total number of jobs processed
+# @return the finished crawl statistics aggregator
 sub workerThread
 {
 	my ($pendingJobs, $predictedAccumulatorRef, $processedAccumulatorRef) = @_;
 	my $statsAggregator = CrawlStatisticsAggregator->new();
 	$statsAggregator->setSampleRate($options{'throughputSampleRate'});
+	my $JOBS_LIMIT = $options{'maxJobsToProcess'};
+	if ($JOBS_LIMIT < 1) { $JOBS_LIMIT = Inf; }
 	while (my $newJob = $pendingJobs->dequeue())
 	{	
 		if ($newJob eq TERMINATE_WORKER)
@@ -397,8 +426,8 @@ sub workerThread
 		}
 		processPage($newJob, $pendingJobs, $predictedAccumulatorRef, $statsAggregator);
 		$$processedAccumulatorRef++; 
-		#Util::debugPrint( 'total jobs processed ' . $$processedAccumulatorRef );
-		if ($$predictedAccumulatorRef == $$processedAccumulatorRef)
+		Util::debugPrint( 'total jobs processed ' . $$processedAccumulatorRef );
+		if ($$predictedAccumulatorRef == $$processedAccumulatorRef || $$processedAccumulatorRef >= $JOBS_LIMIT)
 		{
 			my @terminalJobArray;
 			for (my $index = 0; $index < $options{'numWorkers'} - 1; $index++)
