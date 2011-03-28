@@ -34,6 +34,8 @@ sub new
 	$self->{CRAWL_GRAPH} = {};
 	$self->{THROUGHPUT_SAMPLES} = [];
 	$self->{SAMPLE_START_TIME} = 0;
+	$self->{AVERAGE_BRANCHING_FACTOR} = 0;
+	$self->{TOTAL_JOBS_DISCOVERED} = 0;
 	bless $self, 'CrawlStatisticsAggregator';
 	return $self;
 }
@@ -57,6 +59,7 @@ sub update
 	# add the current page and its links to the crawl graph
 	#_addPageToGraph($self, $url, @{$links});
 	_updateThroughput($self);
+	_updateBranchingFactor($self, scalar(@$links));
 }
 
 ## @cmethod void finish()
@@ -117,6 +120,19 @@ sub _updateThroughput
 		}
 		$self->{LAST_SAMPLE_TIME} = $currentTime;
 	}
+}
+
+## @cmethod void _updateBranchingFactor($self, $numberOfLinksFound)
+# this function is in charge of maintaining an average branching factor of the pages encountered so far in the crawl
+# @param numberOfLinksFound the number of links found in the page currently being processed
+sub _updateBranchingFactor
+{
+	my ($self, $numberOfLinksFound) = @_;
+	#update the total discovered jobs
+	my $pagesProcessed = $self->{TOTAL_JOBS_PROCESSED};
+	$self->{TOTAL_JOBS_DISCOVERED} += $numberOfLinksFound;
+	my $newDiscoveredTotal = $self->{TOTAL_JOBS_DISCOVERED};
+	my $newAverageBranchingFactor = $newDiscoveredTotal / $pagesProcessed;
 }
 
 ## @cmethod void _addPageToGraph($url, @links)
@@ -183,6 +199,11 @@ sub getCrawlGraph
 sub getNumberOfSamples
 {
 	return scalar(@{$_[0]->{THROUGHPUT_SAMPLES}});
+}
+
+sub getTotalJobsDiscovered
+{
+	return $_[0]->{TOTAL_JOBS_DISCOVERED};
 }
 
 
