@@ -8,22 +8,19 @@ package PipelineStage;
 use threads;
 use threads::shared;
 use Class::Struct;
+use Time::HiRes;
 
 # define the names of the object members
 use constant
 {
-	PROCESSING_FUNCTION,
-	INPUT_BUFFER,
-	OUTPUT_BUFFER,
-	STATUS_ARRAY,
-	WORKER_THREADS,
-	NUM_ACTIVE_WORKERS,
-	WORKER_THREAD_RESULTS,
-	JOB_COUNT_ARRAY,
-	THROUGHPUT_SAMPLE_RATE,
-	THROUGHPUT_SAMPLE_HISTORY_SIZE,
-	TOTAL_WORKER_THREADS_CREATED,
-	TOTAL_WORKER_THREADS_DESTROYED
+	ADD_WORKERS_SUB,
+	REMOVE_WORKERS_SUB,
+	GET_NUM_WORKERS_SUB,
+	GET_THROUGHPUT_SUB,
+	GET_PROCESSING_FUNCTION_SUB,
+	START_SUB,
+	STOP_SUB,
+	COLLECTED_WORKER_STATS
 };
 
 # define the status states
@@ -41,17 +38,81 @@ struct(WORKER_THREAD_STATS => {
 
 sub new
 {
-	my ($class, $processingFunction, $inputBuffer, $outputBuffer, $throughputSampleRate, $throughputSampleHistorySize) = @_;
+	my ($class, 
+		$processingFunction, 
+		$inputBuffer, 
+		$outputBuffer, 
+		$throughputSampleRate, 
+		$throughputSampleHistorySize,
+		$initialNumberOfWorkers) = @_;
 	
-	my $self = {};
-	my $self->{PROCESSING_FUNCTION} = $processingFunction;
-	my $self->{INPUT_BUFFER} = $inputBuffer;
-	my $self->{OUTPUT_BUFFER} = $outputBuffer;
-	my $self->{NUM_ACTIVE_WORKERS} = 0;
-	my $self->{WORKER_THREAD_RESULTS} = [];
-	my $self->{JOB_COUNT_ARRAY} = [];
-	my $self->{TOTAL_WORKER_THREADS_CREATED} = 0;
-	my $self->{TOTAL_WORKER_THREADS_DESTROYED} = 0;
+	my $self = &share({});
+	
+	my $statusArray :shared = &share([]);
+	my $jobsCompletedCounter :shared = &share([]);
+	my $workerThreads :shared = &share([]);
+	my $numActiveWorkers :shared;
+	my $currentThroughput :shared;
+	my $monitorThreadSwitch :shared;
+	my $deadThreadJobsProcessedCounter :shared;
+	
+	# initialize the killed threads' results collector
+	$self->{COLLECTED_WORKER_STATS} = {};
+	# create the add workers subroutine
+	$self->{ADD_WORKERS_SUB} = _createAddWorkersSub(
+									\$numActiveWorkers,
+									$statusArray,
+									$inputBuffer,
+									$outputBuffer,
+									$processingFunction,
+									$jobsCompletedCounter,
+									$workerThreads);
+	
+	# create the remove workers subroutine
+	$self->{REMOVE_WORKERS_SUB} = _createRemoveWorkersSub(
+									$statusArray,
+									$workerThreads,
+									\$numActiveWorkers,
+									\$deadThreadJobsProcessedCounter);
+									
+	# create the get number of workers subroutine
+	$self->{GET_NUM_WORKERS_SUB} = sub { return $numActiveWorkers; };
+	
+	# create the get throughput function
+	$self->{GET_THROUGHPUT_SUB} = sub { return $currentThroughput; };
+	
+	# create the get processing function sub
+	$self->{GET_PROCESSING_FUNCTION_SUB} = sub { return $processingFunction; };
+	
+	# create the start subroutine
+	$self->{START_SUB} = 
+		sub
+		{
+			my $self = shift;
+			$monitorThreadSwitch = ON;
+			my $monitorThread = _createStartMonitorThreadSub(
+								\$monitorThreadSwitch,
+								$jobsCompletedCounter,
+								\$currentThroughput, 
+								$throughputSampleRate,
+								$throughputSampleHistorySize,
+								$deadThreadJobsProcessedCounter)->();
+			# now that the monitor is up and running, start the pipeline proper
+			$self->{ADD_WORKERS_SUB}->($self, $initialNumberOfWorkers);
+		};
+	# create the stop subroutine
+	$self->{STOP_SUB} =
+		sub
+		{
+			my $self = shift;
+			# stop the monitor thread,
+			$monitorThreadSwitch = OFF;
+			# remove all the workers
+			$self->{REMOVE_WORKERS_SUB}->($self->{GET_NUM_WORKERS_SUB}->());
+			# return the collected worker stats
+			return $self->{COLLECTED_WORKER_STATS};
+		};
+	
 	
 	bless $self, $class;
 	
@@ -61,100 +122,194 @@ sub new
 
 sub addWorkers
 {
-	my ($self, $numToAdd) = @_;
-	my $numActive = $self->{NUM_ACTIVE_WORKERS};
-	my $statusArray = $self->{STATUS_ARRAY};
-	my $functions = $self->{PROCESSING_FUNCTIONS};
-	my $inputBuffer = $self->{INPUT_BUFFER};
-	my $outputBuffer = $self->{OUTPUT_BUFFER};
-	my $workerThreads = $self->{WORKER_THREADS};
-	my $function = $self->{PROCESSING_FUNCTION};
-	my $jobCountingArray = $self->{JOB_COUNT_ARRAY};
-	for my $index ($numActive...($numActive + $numToAdd))
-	{
-		# modify the current index status to ON
-		$statusArray->[$index] = ON;
-		# create this new thread's execution function
-		my $newWorkerExecutionFunction = 
-			sub
-			{
-				while ($statusArray->[$index])
-				{
-					my $currentJob = $inputBuffer->getJob();
-					# if the job isn't undefined, process it
-					if ($currentJob)
-					{
-						$outputBuffer->addJobs($function->($inputBuffer->getJob()));	
-						$jobCountingArray->[$index]++;	
-					}
-						
-					# chill for a bit
-					threads::yield();
-				}
-			};
-		# create the actual thread
-		$workerThreads->[$index] = threads->create($newWorkerExecutionFunction);
-	}
-	
-	# update the number of active threads
-	$self->{NUM_ACTIVE_WORKERS} += $numToAdd;
+	my ($self, $howMany) = @_;
+	$self->{ADD_WORKERS_SUB}->($self, $howMany);
 }
 
 sub removeWorkers
 {
-	my ($self, $numToRemove) = @_;
-	# TODO: implement PipelineStage::removeWorkers
-	my $resultsCollection = $self->{WORKER_THREAD_RESULTS};
-	my $jobCounter = $self->{JOB_COUNT_ARRAY};
-	my $workerThreads = $self->{WORKER_THREADS};
-	my $statusArray = $self->{STATUS_ARRAY};
-	my @newlyCollectedResults = ();
-	for my $index (0...$numToRemove)
-	{
-		# set the status bit for this worker to OFF
-		$statusArray->[$index] = OFF;
-		# now its results can be collected
-		
-		
-		my $currentResultsStruct = new WORKER_THREAD_STATS;
-		$currentResultsStruct->jobsProcessed(shift $jobCounter);
-		$currentResultsStruct->lifespan($workerToRemove->join());
-		$newlyCollectedResults[$index] = $currentResultsStruct;
-	}
-	
-	push (@{$resultsCollection}, @newlyCollectedResults);
-	
-	
+	my ($self, $howMany) = @_;
+	$self->{REMOVE_WORKERS_SUB}->($self, $howMany);
 }
 
 sub getNumWorkers
 {
 	my $self = shift;
-	# TODO: implement PipelineStage::getNumWorkers
-}
-
-sub getAverageThroughput
-{
-	my $self = shift;
-	# TODO: implement PipelineStage::getAverageThroughput
+	return $self->{GET_NUM_WORKERS_SUB}->();
 }
 
 sub getThroughput
 {
 	my $self = shift;
-	# TODO: implement PipelineStage::getThroughput
+	return $self->{GET_THROUGHPUT_SUB}->();
+}
+
+sub getProcessingFunction
+{
+	my $self = shift;
+	return $self->{GET_PROCESSING_FUNCTION_SUB}->();
 }
 
 sub start
 {
 	my $self = shift;
-	# TODO: implement PipelineStage::start
+	$self->{START_SUB}->($self);
 }
 
 sub stop
 {
 	my $self = shift;
-	# TODO: implement PipelineStage::stop
+	return $self->{STOP_SUB}->($self);
+}
+
+sub _createAddWorkersSub
+{
+	my ($activeThreadCountRef,
+		$statusArray,
+		$inputBuffer,
+		$outputBuffer,
+		$function,
+		$jobCountingArray,
+		$workerThreads) = @_;
+	# deference the number of active threads reference
+	my $numActive = $$activeThreadCountRef;
+	# define and return the add worker subroutine
+	return
+		sub
+		{
+			my ($self, $numToAdd) = @_;
+			for my $index ($numActive...($numActive + $numToAdd))
+			{
+				# set the current status of this element to ON
+				$statusArray->[$index] = ON;
+				# create the thread execution subroutine
+				my $executionRoutine = _createWorkerExecutionSub(
+						$index,
+						$statusArray,
+						$inputBuffer,
+						$outputBuffer,
+						$function,
+						$jobCountingArray);
+				# now create the thread and place reference to it in the thread array
+				$workerThreads->[$index] = threads->create($executionRoutine);
+			}
+			# update the number of active threads
+			$$activeThreadCountRef += $numToAdd;
+		};
+}
+
+sub _createWorkerExecutionSub
+{
+	my ($index, $statusArray, $inputBuffer, $outputBuffer, $function, $jobCountingArray) = @_;
+	
+	return
+		sub
+		{
+			my $startTime = time;
+			while ($statusArray->[$index] == ON)
+			{
+				my $currentJob = $inputBuffer->getJob();
+				if ($currentJob)
+				{
+					$outputBuffer->addJobs($function->($currentJob));
+					$jobCountingArray->[$index]++;
+				}
+				
+				threads::yield();
+			}
+			return (time - $startTime);
+		};
+}
+
+sub _createRemoveWorkersSub
+{
+	my ($statusArray, 
+		$workerThreads, 
+		$activeThreadCountRef, 
+		$jobCountingArray, 
+		$jobsProcessedByDeadThreadsCounterRef) = @_;
+	return
+		sub
+		{
+			my ($self, $numToRemove) = @_;
+			my $localResults = [];
+			for my $index (0..$numToRemove-1)
+			{
+				# set the status bit of the first element to OFF
+				$statusArray->[0] = OFF;
+				# wind down the worker and add its stats to the localResults collection
+				my $currentWorkerResults = new WORKER_THREAD_STATS;
+				$currentWorkerResults->lifespan($workerThreads->[0]->join());
+				my $jobsProcessed = shift @{$jobCountingArray};
+				$currentWorkerResults->jobsProcessed($jobsProcessed);
+				# add the jobs processed to the grand total
+				$$jobsProcessedByDeadThreadsCounterRef += $jobsProcessed;
+				$localResults->[$index] = $currentWorkerResults;
+				# shift values off the status, and worker arrays
+				shift @{$statusArray};
+				shift @{$workerThreads};
+				
+			}
+			# add this local collection of results to the total
+			push (@{$self->{COLLECTED_WORKER_STATS}}, @$localResults);
+			# update the number of active threads
+			$$activeThreadCountRef -= $numToRemove;
+		};
+}
+
+sub _createMonitorThreadStartSub
+{
+	my ($monitorStatusRef, 
+		$currentThroughputRef, 
+		$jobCounterArray, 
+		$sampleRate, 
+		$maxHistorySize,
+		$deadThreadJobsProcessedCounterRef) = @_;
+	
+	return
+		sub
+		{
+			return
+				async
+				{
+					my $lastSampleTime = time;
+					my $totalJobsInHistory = 0;
+					my @history = ();
+					my $jobTotalAtLastSample = 0;
+					while ($$monitorStatusRef == ON)
+					{
+						my $currentTime = time;
+						if ($currentTime - $lastSampleTime > $sampleRate)
+						{
+							my $jobsProcessedSinceLastSample =
+									($$deadThreadJobsProcessedCounterRef + _computeArraySum($jobCounterArray)) - $jobTotalAtLastSample;
+							my $currentHistorySize = scalar(@history);
+							my $jobsLeavingHistory = 0;
+							if (scalar(@history) == $maxHistorySize)
+							{
+								$jobsLeavingHistory = shift @history;
+							}
+							
+							$totalJobsInHistory += ($jobsProcessedSinceLastSample - $jobsLeavingHistory);
+							push (@history, $jobsProcessedSinceLastSample);
+							
+							$$currentThroughputRef = $totalJobsInHistory / scalar(@history);
+						}
+						yield();
+					 }
+				};
+		};
+}
+
+sub _computeArraySum
+{
+	my $arrayReference = shift;
+	my $sum = 0;
+	foreach (@$arrayReference)
+	{
+		$sum += $_;
+	}
+	return $sum;
 }
 
 1;
